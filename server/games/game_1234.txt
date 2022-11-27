@@ -1,0 +1,7 @@
+palavra ficheiro_hint
+code(1) play(1)
+code(2) play(2)
+...
+code(n) play(n)
+
+* Trocar para YYYYMMDD_HHMMSS_code.txt quando se chama F, W ou Q*

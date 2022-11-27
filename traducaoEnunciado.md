@@ -3,9 +3,9 @@ A ideia é ir preenchendo as "checkboxes" quando implementarmos cada feature
 
 ## Player
 
-[ ] - Variável global GN
+[X] - Variável global GN
 
-[ ] - Cada player tem um PLID, string com 6 digitos
+[X] - Cada player tem um PLID, string com 6 digitos
 
 [ ] - É começado assim: `./player [-n GSIP] [-p GSport]`
 

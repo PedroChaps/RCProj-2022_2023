@@ -1,0 +1,6 @@
+.vscode/
+.idea/
+client/.idea/
+client/CMakeLists.txt
+client/cmake-build-debug/
+client/player

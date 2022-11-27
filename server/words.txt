@@ -1,0 +1,5 @@
+palavra(1) ficheiro(1)
+palavra(2) ficheiro(2)
+shiba shiba.jpg
+..
+palavra(n) ficheiro(n)

@@ -1,4 +1,4 @@
-palavra ficheiro_hint
+shiba shiba.jpg
 code(1) play(1)
 code(2) play(2)
 ...

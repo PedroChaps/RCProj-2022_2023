@@ -39,12 +39,13 @@
 #define STATE 6
 #define QUIT 7
 #define EXIT 8
+#define INPUT_SIZE 31
+#define BUFFER_SIZE 1024
 #define REV 9 // FIXME remover mais tarde
 
 int trials = 1;
 char plid[] = "000000";
 typedef struct game {
-    int curr_trial;
     int max_errors;
     int curr_errors;
     int nr_letters;
@@ -90,7 +91,7 @@ int process_start(game *current_game, char *response){
 
     // Initializes the other variables
     current_game->curr_errors = 0;
-    current_game->curr_trial = 1;
+    trials = 1;
 
     current_game->current_word = (char *) malloc(sizeof (char) * current_game->nr_letters);
     memset(current_game->current_word, '_', current_game->nr_letters);
@@ -101,7 +102,7 @@ int process_start(game *current_game, char *response){
 }
 
 
-/* sends a message and saves the message sent in buffer*/
+/* sends a message and saves the message sent in buffer via udp protocol*/
 int send_message_udp(char *ip, char* port, char* cmd, char* buffer) {
 
     int fd, errcode;
@@ -131,12 +132,12 @@ int send_message_udp(char *ip, char* port, char* cmd, char* buffer) {
     }
 
     addrlen = sizeof(addr);
-    n = recvfrom(fd, buffer, 128, 0, (struct sockaddr *)&addr, &addrlen);
+    n = recvfrom(fd, buffer, BUFFER_SIZE, 0, (struct sockaddr *)&addr, &addrlen);
     if (n == -1) {
         return -1;
     }
 
-    write(1, "echo: ", 6);
+    write(1, "DEBUG: ", 6);
     write(1, buffer, n);
 
     freeaddrinfo(res);
@@ -162,6 +163,105 @@ void auxPrintArray(char **array) {
     printf("]");
 }
 
+int read_word(char *buffer, int fd, int max_word_len){
+    ssize_t nleft,nwritten, nread;
+    char *ptr;
+    int count;
+
+    
+    nleft=max_word_len; 
+    ptr=buffer;
+    while(nleft>0){
+        nread =read(fd,ptr,1);
+        if (*ptr == ' '){
+            *ptr = '\0';
+            break;
+        }
+        else if(nread==-1)/*error*/exit(1);
+        else if (nread == 0)
+            break; // closed by peer
+        nleft -= nread;
+        ptr += nread;
+    }
+    nread = max_word_len - nleft;
+    return nread;
+}
+
+
+/* sends a message and saves the message sent in buffer via tcp protocol*/
+int send_message_tcp(char *ip, char* port, char* cmd) {
+
+    int fd, errcode;
+    ssize_t n;
+    ssize_t nbytes,nleft,nwritten, nread;
+    char *ptr;
+    socklen_t addrlen;
+    struct addrinfo hints, *res;
+    struct sockaddr_in addr;
+
+    char *cmd_code = (char*) malloc(sizeof(char)* 25);
+
+    fd = socket(AF_INET, SOCK_STREAM, 0);
+    if (fd == -1) {
+        exit(1);
+    }
+
+    memset(&hints, 0, sizeof hints);
+    hints.ai_family = AF_INET;
+    hints.ai_socktype = SOCK_STREAM; // TCP socket
+
+    errcode = getaddrinfo(ip, port, &hints, &res);
+    if (errcode != 0) {
+        exit(1);
+    }
+
+    n = connect(fd, res->ai_addr, res->ai_addrlen);
+    if (n == -1) {
+        exit(1);
+    }
+
+    n = read_word(cmd_code, fd, 3+1);
+    if (strcmp(cmd_code, "RSB") != 0 || strcmp(cmd_code, "RHL") != 0|| strcmp(cmd_code, "RST") != 0)
+        exit(1);
+    n = read_word(cmd_code, fd, 5+1);
+    if (strcmp(cmd_code, "ACT") != 0 || strcmp(cmd_code, "FIN") != 0 || strcmp(cmd_code, "NOK") != 0 ||
+        strcmp(cmd_code, "OK") != 0 || strcmp(cmd_code, "EMPTY"))
+        exit(1);
+    
+    if (strcmp(cmd_code, "EMPTY"))
+        return PROCESS_EMPTY;
+
+    if (strcmp(cmd_code, "NOK"))
+        return PROCESS_NOK;
+    
+    
+    // TODO implement ACT, FIN and OK 
+    
+
+
+    /*     n=write(fd, cmd, strlen(cmd));
+        if (n == -1) {
+            exit(1);
+        }
+
+
+        n=read(fd, buffer, BUFFER_SIZE);
+        if (n == -1) {
+            exit(1);
+        }
+
+    */
+
+    /* Imprime a mensagem "echo" e o conteúdo do buffer (ou seja, o que foi recebido
+    do servidor) para o STDOUT (fd = 1) */
+    write(1, "DEBUG: ", 6);
+    write(1, cmd_code, n);
+
+    /* Desaloca a memória da estrutura `res` e fecha o socket */
+    freeaddrinfo(res);
+    close(fd);
+}
+
 
 /* Processes the input from the command line, attributing a new IP and a new Port if those arguments were passed */
 int processInput(int argc, char *argv[], char *ip, char *port){
@@ -184,7 +284,7 @@ int processInput(int argc, char *argv[], char *ip, char *port){
 int readCommand(int *cmdCode, char *cmd){
 
     int res;
-    char buffer[11]; // Creates a temporary buffer to read the command
+    char buffer[INPUT_SIZE]; // Creates a temporary buffer to read the command
 
     // Reads the command
     res = scanf("%s", buffer);
@@ -300,7 +400,7 @@ int readCommand(int *cmdCode, char *cmd){
 
 int main(int argc, char *argv[]) {
     
-    char* response = (char*) malloc(sizeof(char)*1024);
+    char* response = (char*) malloc(sizeof(char)*BUFFER_SIZE);
     int res, toExit = 0;
     int cmdCode;                                            // The Command that the user passes
     char *cmd = (char*) malloc(sizeof(char)*1024);      // The argument of the command, if it exists
@@ -311,7 +411,7 @@ int main(int argc, char *argv[]) {
 
     /* Initializes the structure Game */
     game *current_game = (game *) malloc(sizeof(game));
-    current_game->curr_trial = 1;
+    trials = 1;
     current_game->current_word = malloc(sizeof(char) * MAX_WORD_SIZE + 1);
 
     // reads the input from the command line and defines a new IP and port if they were passed as arguments
@@ -341,18 +441,20 @@ int main(int argc, char *argv[]) {
             case PLAY:
                 //printf("Play! Arg: %s", cmd);
                 send_message_udp(ip, port, cmd, response);
-                current_game->curr_trial++; // TODO se a resposta for INV, não incremento curr_trial
+                trials++; // TODO se a resposta for INV, não incremento trials
                 break;
 
             case GUESS:
                 //printf("Guess! Arg: %s", cmd);
                 send_message_udp(ip, port, cmd, response);
-                current_game->curr_trial++;
+                trials++;
 
                 break;
 
             case SCOREBOARD:
                 printf("Scoreboard!\n");
+                strcpy(cmd, "GSB\n");
+                send_message_tcp(ip, port, cmd, response);
                 break;
 
             case HINT:
@@ -364,7 +466,6 @@ int main(int argc, char *argv[]) {
                 break;
 
             case QUIT:
-                //printf("Quit!\n");
                 send_message_udp(ip, port, cmd, response);
                 break;
 

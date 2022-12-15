@@ -7,6 +7,9 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <netdb.h>
+#include <fcntl.h>
+#include <errno.h>
+
 
 #define GN 31
 #define PLID "099298"
@@ -18,16 +21,16 @@
                     "`start PLID`, where PLID is your student number.\n"
 #define ONGOING_GAME "There is still an ongoing game. Please continue it (`play *letter*`) or `quit` instead\n"
 #define STARTED_GAME "A new game has started! The word has >%d< letters and you have a maximum of >%d< errors!\n"
-#define AVAILABLE_COMMANDS "The following commands are available:\n"\
+#define AVAILABLE_COMMANDS "\nThe following commands are available:\n"\
 "-`play *letter*` or `pl *letter*` - plays a letter;\n"\
 "-`guess *word*` or `gw *word*`    - guesses a word;\n"\
 "-`scoreboard` or `sb`             - Displays the scoreboard;\n"\
 "-`hint` or `h`                    - recieves a hint to help find the word;\n"\
 "-`state` or `st`                  - recieves a summary of the state of the current game or the most recent game;\n"\
 "-`quit`                           - quits the current game;\n"\
-"-`exit`                           - quits the current game and exists the program.\n"\
-
-
+"-`exit`                           - quits the current game and exists the program.\n"
+#define WELCOME_STATE "This is the current state of your game:\n"
+#define SAVED_IMAGE "Imagem guardada com sucesso!\nA imagem encontra-se no ficheiro %s\n"
 /* --------------------------------------------------------------------------------------------------- */
 
 #define ERROR (-1)
@@ -40,8 +43,13 @@
 #define QUIT 7
 #define EXIT 8
 #define INPUT_SIZE 31
-#define BUFFER_SIZE 1024
+#define CHUNK_SIZE 1024
 #define REV 9 // FIXME remover mais tarde
+
+#define PROCESS_NOK (-3)
+#define PROCESS_EMPTY (-4)
+
+#define min(a, b) (((a) < (b)) ? (a) : (b))
 
 int trials = 1;
 char plid[] = "000000";
@@ -53,7 +61,7 @@ typedef struct game {
 } game;
 
 void print_current_word(game *game){
-    printf("The current word is:\n%s\n\n", game->current_word);
+    printf("The current word is:\n%s\n", game->current_word);
 }
 
 /* Initializes some variables of the current game and informs the user */
@@ -132,7 +140,7 @@ int send_message_udp(char *ip, char* port, char* cmd, char* buffer) {
     }
 
     addrlen = sizeof(addr);
-    n = recvfrom(fd, buffer, BUFFER_SIZE, 0, (struct sockaddr *)&addr, &addrlen);
+    n = recvfrom(fd, buffer, CHUNK_SIZE, 0, (struct sockaddr *)&addr, &addrlen);
     if (n == -1) {
         return -1;
     }
@@ -152,17 +160,6 @@ void printUsage() {
 }
 
 
-void auxPrintArray(char **array) {
-    int size = sizeof(array);
-    int i;
-    
-    printf("[");
-    for (i = 0; i < size; i++) {
-        printf("%s, ", array[i]);
-    }
-    printf("]");
-}
-
 int read_word(char *buffer, int fd, int max_word_len){
     ssize_t nleft,nwritten, nread;
     char *ptr;
@@ -173,7 +170,7 @@ int read_word(char *buffer, int fd, int max_word_len){
     ptr=buffer;
     while(nleft>0){
         nread =read(fd,ptr,1);
-        if (*ptr == ' '){
+        if (*ptr == ' '){   
             *ptr = '\0';
             break;
         }
@@ -188,18 +185,34 @@ int read_word(char *buffer, int fd, int max_word_len){
 }
 
 
-/* sends a message and saves the message sent in buffer via tcp protocol*/
+// Reads a chunk of 1024 bytes from the server to the buffer
+int read_chunk(char *buffer, int fd, int toRead){
+
+    ssize_t nleft, n_read;
+    n_read = read(fd,buffer,toRead);
+    return n_read;
+}
+
+
+/* sends a message and saves the message sent in a file, via tcp protocol */
 int send_message_tcp(char *ip, char* port, char* cmd) {
 
-    int fd, errcode;
+    int fd, errcode, filesize;
     ssize_t n;
     ssize_t nbytes,nleft,nwritten, nread;
     char *ptr;
+    char *cmd_code = (char *) malloc(sizeof(char) * (3+1));
+    char *status = (char *) malloc(sizeof(char) * (5+1));
+    char *buffer = (char *) malloc(sizeof(char) * (CHUNK_SIZE));
+
     socklen_t addrlen;
     struct addrinfo hints, *res;
     struct sockaddr_in addr;
 
-    char *cmd_code = (char*) malloc(sizeof(char)* 25);
+    char filename[24 + 1];
+    char filepath[24 + 1 + 5 + 1] = "files/";
+    char filesize_str[10 + 1];
+
 
     fd = socket(AF_INET, SOCK_STREAM, 0);
     if (fd == -1) {
@@ -220,46 +233,100 @@ int send_message_tcp(char *ip, char* port, char* cmd) {
         exit(1);
     }
 
-    n = read_word(cmd_code, fd, 3+1);
-    if (strcmp(cmd_code, "RSB") != 0 || strcmp(cmd_code, "RHL") != 0|| strcmp(cmd_code, "RST") != 0)
+
+    n=write(fd, cmd, strlen(cmd));
+    if (n == -1) {
         exit(1);
-    n = read_word(cmd_code, fd, 5+1);
-    if (strcmp(cmd_code, "ACT") != 0 || strcmp(cmd_code, "FIN") != 0 || strcmp(cmd_code, "NOK") != 0 ||
-        strcmp(cmd_code, "OK") != 0 || strcmp(cmd_code, "EMPTY"))
-        exit(1);
-    
-    if (strcmp(cmd_code, "EMPTY"))
-        return PROCESS_EMPTY;
+    }
 
-    if (strcmp(cmd_code, "NOK"))
-        return PROCESS_NOK;
-    
-    
-    // TODO implement ACT, FIN and OK 
-    
-
-
-    /*     n=write(fd, cmd, strlen(cmd));
-        if (n == -1) {
-            exit(1);
-        }
-
-
-        n=read(fd, buffer, BUFFER_SIZE);
+    /*
+        n=read(fd, buffer, CHUNK_SIZE);
         if (n == -1) {
             exit(1);
         }
 
     */
 
+    n = read_word(cmd_code, fd, 3+1);
+    if (strcmp(cmd_code, "RSB") != 0 && strcmp(cmd_code, "RHL") != 0 && strcmp(cmd_code, "RST") != 0) {
+        exit(1);
+    }
+    n = read_word(status, fd, 5+1);
+    if (strcmp(status, "ACT") != 0 && strcmp(status, "FIN") != 0 && strcmp(status, "NOK") != 0 &&
+        strcmp(status, "OK") != 0 && strcmp(status, "EMPTY") != 0) {
+        exit(1);
+    }
+
+    if (strcmp(status, "EMPTY") == 0) {
+        return PROCESS_EMPTY;
+    }
+
+    if (strcmp(status, "NOK") == 0) {
+        return PROCESS_NOK;
+    }
+
+    // A file is read from the server, so we need to read the file name and then the file size, using the function read_word
+    n = read_word(filename, fd, 24+1);
+    if (n == -1) {
+        exit(1);
+    }
+
+    n = read_word(filesize_str, fd, 10+1);
+    if (n == -1) {
+        exit(1);
+    }
+
+    filesize = atoi(filesize_str);
+
+    // We know that the file has the name filename and the size filesize, so we can create a file with that name and size
+    // If the cmd_code is RHL, we need to create a file with the name filename and the size filesize. Otherwise, we keep the information in a buffer. We should use fopen to open the file
+    // and fwrite to write the file. We should use the function read_word to read the file from the server.
+    if (strcmp(cmd_code, "RHL") == 0) {
+
+        strcat(filepath, filename);
+        int fd_img = open(filepath, O_RDWR | O_CREAT, 0666);
+        if (fd_img == -1) {
+            exit(1);
+        }
+
+        int toRead = filesize;
+
+        // Reads the image from the server and saves it locally
+        while (toRead > 0) {
+            nread = read_chunk(buffer, fd, min(CHUNK_SIZE, toRead));
+            write(fd_img, buffer, nread);
+            toRead -= (int) nread;
+        }
+
+        printf(SAVED_IMAGE, filepath);
+    }
+    // Writes to the STDOUT
+    else {
+        int toRead = filesize;
+
+        // Reads the image from the server and saves it locally
+        while (toRead > 0) {
+            nread = read_chunk(buffer, fd, min(CHUNK_SIZE, toRead));
+            write(1, buffer, nread);
+            toRead -= (int) nread;
+        }
+    }
+
+
     /* Imprime a mensagem "echo" e o conteúdo do buffer (ou seja, o que foi recebido
     do servidor) para o STDOUT (fd = 1) */
     write(1, "DEBUG: ", 6);
-    write(1, cmd_code, n);
+    write(1, status, strlen(status));
+    write(1, "\n", 1);
 
     /* Desaloca a memória da estrutura `res` e fecha o socket */
     freeaddrinfo(res);
     close(fd);
+
+    // Frees all the allocated buffers
+    free(cmd_code);
+    free(status);
+    free(buffer);
 }
 
 
@@ -350,16 +417,27 @@ int readCommand(int *cmdCode, char *cmd){
     }
 
     else if (strcmp(buffer, "scoreboard") == 0 || strcmp(buffer, "sb") == 0) {
-        *cmdCode = SCOREBOARD; // TODO comando TCP
+        *cmdCode = SCOREBOARD;
 
+        strcpy(cmd, "GSB\n");
     }
 
     else if (strcmp(buffer, "hint") == 0 || strcmp(buffer, "h") == 0) {
-        *cmdCode = HINT; // TODO comando TCP
+
+        *cmdCode = HINT;
+
+        strcpy(cmd, "GHL ");
+        strcat(cmd, plid);
+        strcat(cmd, "\n");
     }
 
     else if (strcmp(buffer, "state") == 0 || strcmp(buffer, "st") == 0) {
-        *cmdCode = STATE; // TODO comando TCP
+
+        *cmdCode = STATE;
+
+        strcpy(cmd, "STA ");
+        strcat(cmd, plid);
+        strcat(cmd, "\n");
     }
 
     else if (strcmp(buffer, "quit") == 0) {
@@ -400,7 +478,7 @@ int readCommand(int *cmdCode, char *cmd){
 
 int main(int argc, char *argv[]) {
     
-    char* response = (char*) malloc(sizeof(char)*BUFFER_SIZE);
+    char* response = (char*) malloc(sizeof(char) * CHUNK_SIZE);
     int res, toExit = 0;
     int cmdCode;                                            // The Command that the user passes
     char *cmd = (char*) malloc(sizeof(char)*1024);      // The argument of the command, if it exists
@@ -453,16 +531,18 @@ int main(int argc, char *argv[]) {
 
             case SCOREBOARD:
                 printf("Scoreboard!\n");
-                strcpy(cmd, "GSB\n");
-                send_message_tcp(ip, port, cmd, response);
+                send_message_tcp(ip, port, cmd);
                 break;
 
             case HINT:
                 printf("Hint!\n");
+                send_message_tcp(ip, port, cmd);
                 break;
 
             case STATE:
-                printf("State!\n");
+                printf(WELCOME_STATE);
+                send_message_tcp(ip, port, cmd);
+                printf(AVAILABLE_COMMANDS);
                 break;
 
             case QUIT:
@@ -498,3 +578,17 @@ int main(int argc, char *argv[]) {
 
 // CLIENT (sockets)
 // Os sockets abrem e fecham para cada comando (UDP e TCP)
+
+/*
+ * TODO
+ * CLIENTE
+ * - Funções chamadas dentro de um while, se der -1, podem decidir terminar ou dar uma mensagem de erro e de seguida ler o próximo comando
+ * - Por timer em funções que acham que faz sentido
+ *
+ * SERVIDOR
+ * - Por timer em funções que acham que faz sentido
+ * - Funções chamadas dentro de um while. ser -1, passam para próximo pedido
+ *
+ * */
+
+// TODO Ver mallocs e frees todos

@@ -4,3 +4,6 @@ client/.idea/
 client/CMakeLists.txt
 client/cmake-build-debug/
 client/player
+
+client/files/
+

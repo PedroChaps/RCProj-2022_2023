@@ -17,9 +17,9 @@
 
 /* Printing information to the user ------------------------------------------------------------------ */
 #define GENERIC_ERROR "An error has occurred :(\nPlease try again!\n"
-#define WELCOME_MSG "Welcome to the 'RC Word Game'! :D\nPlease start a new game by typing "\
-                    "`start PLID`, where PLID is your student number.\n"
-#define ONGOING_GAME "There is still an ongoing game. Please continue it (`play *letter*`) or `quit` instead\n"
+#define WELCOME_MSG "Welcome to the 'RC Word Game'! :D\n"
+#define HOW_TO_START_GAME "Please start a new game by typing `start PLID`, where PLID is your student number, or `exit` the program.\n"
+#define ONGOING_GAME "It looks like there is still an ongoing game. Please continue it (`play *letter*`), see it's `state` or `quit` it instead.\n"
 #define STARTED_GAME "A new game has started! The word has >%d< letters and you have a maximum of >%d< errors!\n"
 #define AVAILABLE_COMMANDS "\nThe following commands are available:\n"\
 "-`play *letter*` or `pl *letter*` - plays a letter;\n"\
@@ -30,7 +30,10 @@
 "-`quit`                           - quits the current game;\n"\
 "-`exit`                           - quits the current game and exists the program.\n"
 #define WELCOME_STATE "This is the current state of your game:\n"
-#define SAVED_IMAGE "Imagem guardada com sucesso!\nA imagem encontra-se no ficheiro %s\n"
+#define SAVED_IMAGE "The image was saved successfuly!\nYou can find the image in the file %s\n"
+#define QUIT_ERROR "You can't quit because you don't have an ongoing game. Please start a new game by typing `start PLID`, where PLID is your student number.\n"
+#define QUIT_SUCCESSFUL "The game was quit successfuly!\n"
+#define EXIT_SUCCESSFUL "The game was quit (if it existed) and the program was exited successfuly!\nTil' next time :D\n"
 /* --------------------------------------------------------------------------------------------------- */
 
 #define ERROR (-1)
@@ -62,7 +65,11 @@ typedef struct game {
 
 void print_current_word(game *game){
     printf("The current word is:\n%s\n", game->current_word);
+    printf("This is your %dº trial.\n", trials);
+    printf("You still have %d errors left (%d/%d).\n", (game->max_errors - game->curr_errors), game->curr_errors, game->max_errors);
 }
+
+// TODO Quando começo um cliente e o servidor ainda está com um jogo ativo, tenho que confiar nas trials que ele me dá
 
 /* Initializes some variables of the current game and informs the user */
 int process_start(game *current_game, char *response){
@@ -80,7 +87,7 @@ int process_start(game *current_game, char *response){
     splitted = strtok(NULL, " ");
 
     // Processes the "NOK" status
-    if (strcmp(splitted, "NOK") == 0) {
+    if (strcmp(splitted, "NOK\n") == 0) {
         printf(ONGOING_GAME);
         return -1;
     } // Checks for other status
@@ -102,15 +109,68 @@ int process_start(game *current_game, char *response){
     trials = 1;
 
     current_game->current_word = (char *) malloc(sizeof (char) * current_game->nr_letters);
-    memset(current_game->current_word, '_', current_game->nr_letters);
+    memset(current_game->current_word, '-', current_game->nr_letters);
 
     print_current_word(current_game);
     printf(AVAILABLE_COMMANDS);
     return 0;
 }
 
+int process_quit(char *response){
 
-/* sends a message and saves the message sent in buffer via udp protocol*/
+//    // Separates the response code
+    char *splitted = strtok(response, " ");
+//
+    // The response code "RQT" is expected from the server
+    if (strcmp(splitted, "RQT") != 0) {
+        printf(GENERIC_ERROR);
+        return -1;
+    }
+
+    // Separates the status code
+    splitted = strtok(NULL, " ");
+
+    // Processes the "OK" status
+    if (strcmp(splitted, "OK\n") == 0) {
+        printf(QUIT_SUCCESSFUL);
+        printf(HOW_TO_START_GAME);
+        return 0;
+    } // Checks for the "NOK" status
+    else if (strcmp(splitted, "NOK\n") == 0) {
+        printf(QUIT_ERROR);
+        return 0;
+    }
+
+    printf(GENERIC_ERROR);
+    return -1;
+}
+
+int process_exit(char *response){
+
+    // Separates the response code
+    char *splitted = strtok(response, " ");
+
+    // The response code "RQT" is expected from the server
+    if (strcmp(splitted, "RQT") != 0) {
+        printf(GENERIC_ERROR);
+        return -1;
+    }
+
+    // Separates the status code
+    splitted = strtok(NULL, " ");
+
+    // If the status code isn't "OK" or "NOK", an error has occurred
+    if (strcmp(splitted, "OK\n") == 0 || strcmp(splitted, "NOK\n") == 0) {
+        printf(EXIT_SUCCESSFUL);
+        return 0;
+    }
+
+    printf(GENERIC_ERROR);
+    return -1;
+}
+
+
+/* sends a message and saves the message sent in buffer via udp protocol */
 int send_message_udp(char *ip, char* port, char* cmd, char* buffer) {
 
     int fd, errcode;
@@ -170,7 +230,7 @@ int read_word(char *buffer, int fd, int max_word_len){
     ptr=buffer;
     while(nleft>0){
         nread =read(fd,ptr,1);
-        if (*ptr == ' '){   
+        if (*ptr == ' '){
             *ptr = '\0';
             break;
         }
@@ -501,6 +561,7 @@ int main(int argc, char *argv[]) {
 
     // Welcomes the user
     printf(WELCOME_MSG);
+    printf(HOW_TO_START_GAME);
     while (!toExit) {
         // reads the command and it's argument (if applicable), from the user and communicates with the server.
         readCommand(&cmdCode, cmd);
@@ -535,24 +596,23 @@ int main(int argc, char *argv[]) {
                 break;
 
             case HINT:
-                printf("Hint!\n");
                 send_message_tcp(ip, port, cmd);
                 break;
 
             case STATE:
                 printf(WELCOME_STATE);
                 send_message_tcp(ip, port, cmd);
-                printf(AVAILABLE_COMMANDS);
                 break;
 
             case QUIT:
                 send_message_udp(ip, port, cmd, response);
+                process_quit(response);
                 break;
 
             case EXIT:
-                //printf("Exit!\n");
                 send_message_udp(ip, port, cmd, response);
                 toExit = 1;
+                process_exit(response);
                 break;
 
             case REV:     // FIXME remover mais tarde - comando REV para revelar a palavra
@@ -564,6 +624,8 @@ int main(int argc, char *argv[]) {
                 printf("ERROR (ISTO É MEU, NÃO DO SERVER)!");
                 break;
         }
+
+        memset(response, 0, CHUNK_SIZE);
     }
 
     return 0;
@@ -592,3 +654,17 @@ int main(int argc, char *argv[]) {
  * */
 
 // TODO Ver mallocs e frees todos
+// TODO implementar lógica do play ->
+//      - [ ] Preencher os underscores com as letras nas posições certas;
+//      - [ ] incrementar trials como deve de ser;
+//      - [ ] incrementar número de erros como deve de ser
+//      - [ ] verificar se a palavra já foi descoberta (fazer print de um "parabéns" com stats quando vem o "RLG WIN ?")
+//      - [ ] ver se nos escapou alguma coisa nos outros status do play
+//      - [ ] Fazer print do estado do jogo (palavra, erros, trials, etc) a cada play
+// TODO implementar lógica do guess ->
+//      - [ ] incrementar trials como deve de ser;
+//      - [ ] incrementar trials como deve de ser;
+//      - [ ] incrementar número de erros como deve de ser
+//      - [ ] verificar se a palavra já foi descoberta (fazer print de um "parabéns" com stats quando vem o "RWG WIN ?")
+//      - [ ] ver se nos escapou alguma coisa nos outros status do guess
+//      - [ ] Fazer print do estado do jogo (palavra, erros, trials, etc) a cada gw

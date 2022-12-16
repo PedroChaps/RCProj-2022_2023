@@ -64,7 +64,15 @@ typedef struct game {
 } game;
 
 void print_current_word(game *game){
-    printf("The current word is:\n%s\n", game->current_word);
+    int i;
+    printf("The current word is:\n");
+    for(i = 0; i < game->nr_letters; i++){
+        if (i == game->nr_letters-1){               //last letter case
+            printf("%c\n", game->current_word[i]);
+            break;
+        }
+        printf("%c ", game->current_word[i]);
+    }
     printf("This is your %dº trial.\n", trials);
     printf("You still have %d errors left (%d/%d).\n", (game->max_errors - game->curr_errors), game->curr_errors, game->max_errors);
 }
@@ -109,7 +117,7 @@ int process_start(game *current_game, char *response){
     trials = 1;
 
     current_game->current_word = (char *) malloc(sizeof (char) * current_game->nr_letters);
-    memset(current_game->current_word, '-', current_game->nr_letters);
+    memset(current_game->current_word, '_', current_game->nr_letters);
 
     print_current_word(current_game);
     printf(AVAILABLE_COMMANDS);
@@ -118,9 +126,9 @@ int process_start(game *current_game, char *response){
 
 int process_quit(char *response){
 
-//    // Separates the response code
+    // Separates the response code
     char *splitted = strtok(response, " ");
-//
+
     // The response code "RQT" is expected from the server
     if (strcmp(splitted, "RQT") != 0) {
         printf(GENERIC_ERROR);
@@ -167,6 +175,88 @@ int process_exit(char *response){
 
     printf(GENERIC_ERROR);
     return -1;
+}
+
+/* reads the letter inside the cmd (format PLG PLID letter trial)*/
+char read_letter(char *cmd){
+    char *token;
+    char letter;
+
+    token = strtok(cmd, " ");
+    token = strtok(NULL, " ");
+    token = strtok(NULL, " ");
+    letter = token[0];
+
+    return letter;
+}
+
+
+/* Processes the "play" action made by the user. Checks if the letter selected is in the
+   word to guess. */
+int process_play(game* current_game, char* response, char* cmd){
+
+    char plid[6+1]; //plid must be 6 digits
+    char status[3+1]; //code is at max 3 digits
+    int trial;
+    int n;          // number of occurences
+    int pos;        // position of the letter
+    int i, curr_pos;
+
+    char letter = read_letter(cmd);
+
+    // Separates the response code
+    char *splitted = strtok(response, " ");
+
+    // The response code "PLG" is expected from the server
+    if (strcmp(splitted, "RLG") != 0) {
+        printf(GENERIC_ERROR);
+        return -1;
+    }
+
+    // Separates the status code
+    splitted = strtok(NULL, " ");
+
+    // If the status code isn't "OK", "NOK", (...), an error has occurred
+    if (strcmp(splitted, "OK\n") == 0 || strcmp(splitted, "WIN\n") == 0 ||
+        strcmp(splitted, "DUP\n") == 0 || strcmp(splitted, "NOK\n") == 0 ||
+        strcmp(splitted, "OVR\n") == 0 || strcmp(splitted, "INV\n") == 0 ||
+        strcmp(splitted, "ERR\n") == 0) {
+
+        printf(EXIT_SUCCESSFUL);
+        return 0;
+    }
+
+    strcpy(status, splitted);
+
+    // Separates the trial
+    splitted = strtok(NULL, " ");
+
+    trial = atoi(splitted);
+
+    // Separates the n
+    splitted = strtok(NULL, " ");
+
+    n = atoi(splitted);
+    char positions[n]; // criate an array that will contain the n positions with the letter
+
+    // Separates the positions in an array containing the positions
+    for (i = 0; i < n; i++){
+        splitted = strtok(NULL, " ");
+        curr_pos = atoi(splitted);
+        positions[i] = curr_pos;
+    }
+
+    // perform "OK" requirement
+    if (strcmp(status, "OK") == 0){
+        for(i = 0; i<n; i++){
+            current_game->current_word[positions[i]-1] = letter;
+        }
+    }
+    print_current_word(current_game);
+
+
+
+
 }
 
 
@@ -563,7 +653,7 @@ int main(int argc, char *argv[]) {
     printf(WELCOME_MSG);
     printf(HOW_TO_START_GAME);
     while (!toExit) {
-        // reads the command and it's argument (if applicable), from the user and communicates with the server.
+        // reads the command and its argument (if applicable), from the user and communicates with the server.
         readCommand(&cmdCode, cmd);
 
         // For each case, sends the message to the server and processes the response
@@ -579,7 +669,11 @@ int main(int argc, char *argv[]) {
 
             case PLAY:
                 //printf("Play! Arg: %s", cmd);
-                send_message_udp(ip, port, cmd, response);
+                res = send_message_udp(ip, port, cmd, response);
+                if (res == -1){
+                    return -1;
+                }
+                process_play(current_game, response, cmd);
                 trials++; // TODO se a resposta for INV, não incremento trials
                 break;
 

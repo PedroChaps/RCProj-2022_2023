@@ -34,6 +34,13 @@
 #define QUIT_ERROR "You can't quit because you don't have an ongoing game. Please start a new game by typing `start PLID`, where PLID is your student number.\n"
 #define QUIT_SUCCESSFUL "The game was quit successfuly!\n"
 #define EXIT_SUCCESSFUL "The game was quit (if it existed) and the program was exited successfuly!\nTil' next time :D\n"
+#define PLAY_WIN "Congratulations! You won the game!\n"
+#define PLAY_DUP "You already tried this letter!\n"
+#define PLAY_NOK "Wrong! The letter is not part of the word\n"
+#define PLAY_OVR "GAME OVER! You missed the word and there are not more errors left. \nGoodbye.\n"
+#define PLAY_INV "Oh no! the trial number is invalid. Some packets might have been dropped or this code is just bad ¯\\_(ツ)_/¯\n"
+#define PLAY_ERR "You just got error'ed. Probably there isn't an ongoing game, Dumbo.\n"
+#define START_ANOTHER_GAME "If you want to a start a new game, type `start PLID`, where PLID is your student number, or `exit` the program.\n"
 /* --------------------------------------------------------------------------------------------------- */
 
 #define ERROR (-1)
@@ -217,10 +224,10 @@ int process_play(game* current_game, char* response, char* cmd){
     splitted = strtok(NULL, " ");
 
     // If the status code isn't "OK", "NOK", (...), an error has occurred
-    if (strcmp(splitted, "OK\n") == 0 || strcmp(splitted, "WIN\n") == 0 ||
-        strcmp(splitted, "DUP\n") == 0 || strcmp(splitted, "NOK\n") == 0 ||
-        strcmp(splitted, "OVR\n") == 0 || strcmp(splitted, "INV\n") == 0 ||
-        strcmp(splitted, "ERR\n") == 0) {
+    if (strcmp(splitted, "OK") != 0 && strcmp(splitted, "WIN") != 0 &&
+        strcmp(splitted, "DUP") != 0 && strcmp(splitted, "NOK") != 0 &&
+        strcmp(splitted, "OVR") != 0 && strcmp(splitted, "INV") != 0 &&
+        strcmp(splitted, "ERR\n") != 0) {
 
         printf(EXIT_SUCCESSFUL);
         return 0;
@@ -231,13 +238,44 @@ int process_play(game* current_game, char* response, char* cmd){
     // Separates the trial
     splitted = strtok(NULL, " ");
 
-    trial = atoi(splitted);
+    trial = atoi(splitted); // TODO: Check if the trial matches. If it doesn't, a packet was lost somewhere
 
+    // Besides OK, all the other status end it's processing here, because they don't have more information
+    if (strcmp(status, "OK") != 0) {
+        if (strcmp(status, "WIN") == 0) {
+            printf(START_ANOTHER_GAME);
+            return 0;
+        }
+        else if (strcmp(status, "DUP") == 0)
+            printf(PLAY_DUP);
+
+        else if (strcmp(status, "NOK") == 0) {
+            printf(PLAY_NOK);
+            current_game->curr_errors++; // Increments the current errors
+        }
+
+        else if (strcmp(status, "OVR") == 0)
+            printf(PLAY_OVR);
+
+        else if (strcmp(status, "INV") == 0)
+            printf(PLAY_INV);
+
+        else if (strcmp(status, "ERR\n") == 0)
+            printf(PLAY_ERR);
+
+        // Increases the trials if it wasn't a DUP or ERR
+        if (strcmp(status, "DUP") != 0 && strcmp(status, "ERR\n") != 0)
+            trials++;
+
+        print_current_word(current_game);
+
+        return 0;
+    }
     // Separates the n
     splitted = strtok(NULL, " ");
 
     n = atoi(splitted);
-    char positions[n]; // criate an array that will contain the n positions with the letter
+    char positions[n]; // creates an array that will contain the n positions with the letter
 
     // Separates the positions in an array containing the positions
     for (i = 0; i < n; i++){
@@ -254,9 +292,8 @@ int process_play(game* current_game, char* response, char* cmd){
     }
     print_current_word(current_game);
 
-
-
-
+    trials++;
+    return 0;
 }
 
 
@@ -378,10 +415,14 @@ int send_message_tcp(char *ip, char* port, char* cmd) {
         exit(1);
     }
 
-    n = connect(fd, res->ai_addr, res->ai_addrlen);
+
+    do {
+        n = connect(fd, res->ai_addr, res->ai_addrlen);
+    } while (n == -1 && errno == EINTR);
     if (n == -1) {
         exit(1);
     }
+
 
 
     n=write(fd, cmd, strlen(cmd));
@@ -632,7 +673,7 @@ int main(int argc, char *argv[]) {
     int res, toExit = 0;
     int cmdCode;                                            // The Command that the user passes
     char *cmd = (char*) malloc(sizeof(char)*1024);      // The argument of the command, if it exists
-    char* port = "58011";                                   // porta do tejo. Depois, substituir por 58000+GN;
+    char* port = "58011";                                   // porta do tejo. TODO substituir por 58000+GN;
 
     char *ip = malloc(sizeof("___.___.___.___"));
     strcpy(ip, "193.136.138.142"); // ip do tejo. Depois, substituir por 127.0.0.1.
@@ -674,7 +715,6 @@ int main(int argc, char *argv[]) {
                     return -1;
                 }
                 process_play(current_game, response, cmd);
-                trials++; // TODO se a resposta for INV, não incremento trials
                 break;
 
             case GUESS:
@@ -762,3 +802,6 @@ int main(int argc, char *argv[]) {
 //      - [ ] verificar se a palavra já foi descoberta (fazer print de um "parabéns" com stats quando vem o "RWG WIN ?")
 //      - [ ] ver se nos escapou alguma coisa nos outros status do guess
 //      - [ ] Fazer print do estado do jogo (palavra, erros, trials, etc) a cada gw
+
+// TODO: GS
+//  - [ ] When the GS responds with DUP, the number of trials in the GS is not increased

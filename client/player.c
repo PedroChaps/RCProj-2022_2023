@@ -100,7 +100,7 @@ int process_start(game *current_game, char *response){
         printf(GENERIC_ERROR);
         return -1;
     }
-    trials++;
+    trials = 1;
 
     // Separates the status code
     splitted = strtok(NULL, " ");
@@ -299,9 +299,10 @@ int process_play(game* current_game, char* response, char* cmd){
             current_game->current_word[positions[i]-1] = letter;
         }
     }
-    print_current_word(current_game);
 
     trials++;
+    print_current_word(current_game);
+
     return 0;
 }
 
@@ -840,7 +841,7 @@ int main(int argc, char *argv[]) {
                 printf("ERROR (ISTO É MEU, NÃO DO SERVER)!");
                 break;
         }
-        printf("TRIALSSSSSSS_GLOBAL: %d\n", trials);
+        //printf("TRIALSSSSSSS_GLOBAL: %d\n", trials);
         memset(response, 0, CHUNK_SIZE);
     }
 

@@ -7,3 +7,5 @@ client/player
 
 client/files/
 
+
+server/cmake-build-debug/

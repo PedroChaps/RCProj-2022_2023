@@ -36,10 +36,13 @@
 #define EXIT_SUCCESSFUL "The game was quit (if it existed) and the program was exited successfuly!\nTil' next time :D\n"
 #define PLAY_WIN "Congratulations! You won the game!\n"
 #define PLAY_DUP "You already tried this letter!\n"
-#define PLAY_NOK "Wrong! The letter is not part of the word\n"
-#define PLAY_OVR "GAME OVER! You missed the word and there are not more errors left. \nGoodbye.\n"
+#define PLAY_NOK "Wrong! The letter is not part of the word.\n"
+#define PLAY_OVR "GAME OVER! You missed the word and you don't have any attemps left.\nGoodbye.\n"
 #define PLAY_INV "Oh no! the trial number is invalid. Some packets might have been dropped or this code is just bad ¯\\_(ツ)_/¯\n"
 #define PLAY_ERR "You just got error'ed. Probably there isn't an ongoing game, Dumbo.\n"
+#define GUESS_NOK "Wrong! That's not the word you're looking for.\n"
+#define GUESS_DUP "You have already tried to guess that word. Try another one!\n"
+#define GUESS_WIN "Wow, you guessed the correct word! Congratulations!\n"
 #define START_ANOTHER_GAME "If you want to a start a new game, type `start PLID`, where PLID is your student number, or `exit` the program.\n"
 /* --------------------------------------------------------------------------------------------------- */
 
@@ -61,7 +64,7 @@
 
 #define min(a, b) (((a) < (b)) ? (a) : (b))
 
-int trials = 1;
+int trials = 0;
 char plid[] = "000000";
 typedef struct game {
     int max_errors;
@@ -97,6 +100,7 @@ int process_start(game *current_game, char *response){
         printf(GENERIC_ERROR);
         return -1;
     }
+    trials++;
 
     // Separates the status code
     splitted = strtok(NULL, " ");
@@ -121,7 +125,6 @@ int process_start(game *current_game, char *response){
 
     // Initializes the other variables
     current_game->curr_errors = 0;
-    trials = 1;
 
     current_game->current_word = (char *) malloc(sizeof (char) * current_game->nr_letters);
     memset(current_game->current_word, '_', current_game->nr_letters);
@@ -202,19 +205,19 @@ char read_letter(char *cmd){
    word to guess. */
 int process_play(game* current_game, char* response, char* cmd){
 
-    char plid[6+1]; //plid must be 6 digits
     char status[3+1]; //code is at max 3 digits
     int trial;
     int n;          // number of occurences
     int pos;        // position of the letter
     int i, curr_pos;
+    int debug_trials = trials;
 
     char letter = read_letter(cmd);
 
     // Separates the response code
     char *splitted = strtok(response, " ");
 
-    // The response code "PLG" is expected from the server
+    // The response code "RLG" is expected from the server
     if (strcmp(splitted, "RLG") != 0) {
         printf(GENERIC_ERROR);
         return -1;
@@ -233,6 +236,11 @@ int process_play(game* current_game, char* response, char* cmd){
         return 0;
     }
 
+    if (strcmp(splitted, "ERR\n") == 0){
+        printf(GENERIC_ERROR);
+        return 0;
+    }
+
     strcpy(status, splitted);
 
     // Separates the trial
@@ -243,6 +251,7 @@ int process_play(game* current_game, char* response, char* cmd){
     // Besides OK, all the other status end it's processing here, because they don't have more information
     if (strcmp(status, "OK") != 0) {
         if (strcmp(status, "WIN") == 0) {
+            printf(PLAY_WIN);
             printf(START_ANOTHER_GAME);
             return 0;
         }
@@ -263,8 +272,8 @@ int process_play(game* current_game, char* response, char* cmd){
         else if (strcmp(status, "ERR\n") == 0)
             printf(PLAY_ERR);
 
-        // Increases the trials if it wasn't a DUP or ERR
-        if (strcmp(status, "DUP") != 0 && strcmp(status, "ERR\n") != 0)
+        // Increases the trials if it wasn't a DUP or ERR or INV
+        if (strcmp(status, "DUP") != 0 && strcmp(status, "ERR\n") != 0 && strcmp(status, "INV") != 0)
             trials++;
 
         print_current_word(current_game);
@@ -295,6 +304,78 @@ int process_play(game* current_game, char* response, char* cmd){
     trials++;
     return 0;
 }
+
+
+/* Processes the "guess" action made by the user. Checks if the given word matches the
+   word to guess. */
+int process_guess(game* current_game, char* response, char* cmd){
+
+    char status[3+1]; //code is always 3 digits
+    int trial;
+
+    // Separates the response code
+    char *splitted = strtok(response, " ");
+
+    // The response code "RWG" is expected from the server
+    if (strcmp(splitted, "RWG") != 0) {
+        printf(GENERIC_ERROR);
+        return -1;
+    }
+
+    // Separates the status code
+    splitted = strtok(NULL, " ");
+
+    // If the status code isn't "OK", "NOK", (...), an error has occurred
+    if (strcmp(splitted, "WIN") != 0 && strcmp(splitted, "DUP") != 0 &&
+        strcmp(splitted, "NOK") != 0 && strcmp(splitted, "OVR") != 0 &&
+        strcmp(splitted, "INV") != 0 && strcmp(splitted, "ERR") != 0) {
+
+        printf(EXIT_SUCCESSFUL);
+        return 0;
+    }
+
+    strcpy(status, splitted);
+
+    // Separates the trial
+    splitted = strtok(NULL, " ");
+
+    trial = atoi(splitted); // TODO: Check if the trial matches. If it doesn't, a packet was lost somewhere
+
+    // Besides OK, all the other status end it's processing here,
+    // because they don't have more information
+
+    if (strcmp(status, "WIN") == 0) {
+        printf(GUESS_WIN);
+        printf(START_ANOTHER_GAME);
+        return 0;
+    }
+    else if (strcmp(status, "DUP") == 0)
+        printf(GUESS_DUP);
+
+    else if (strcmp(status, "NOK") == 0) {
+            printf(GUESS_NOK);
+            current_game->curr_errors++; // Increments the current errors
+    }
+
+    else if (strcmp(status, "OVR") == 0){
+            printf(PLAY_OVR);
+    }
+
+    else if (strcmp(status, "INV") == 0)
+        printf(PLAY_INV);
+
+    else if (strcmp(status, "ERR\n") == 0)
+        printf(PLAY_ERR);
+
+    // Increases the trials if it wasn't a DUP or ERR
+    if (strcmp(status, "DUP") != 0 && strcmp(status, "ERR\n") != 0 && strcmp(status, "INV") != 0) //TODO maybe o INV também não incrementa os trials?
+        trials++;
+
+    print_current_word(current_game);
+
+    return 0;
+}
+
 
 
 /* sends a message and saves the message sent in buffer via udp protocol */
@@ -351,7 +432,6 @@ int read_word(char *buffer, int fd, int max_word_len){
     ssize_t nleft,nwritten, nread;
     char *ptr;
     int count;
-
     
     nleft=max_word_len; 
     ptr=buffer;
@@ -365,7 +445,7 @@ int read_word(char *buffer, int fd, int max_word_len){
         else if (nread == 0)
             break; // closed by peer
         nleft -= nread;
-        ptr += nread;
+        ptr += nread; 
     }
     nread = max_word_len - nleft;
     return nread;
@@ -680,7 +760,7 @@ int main(int argc, char *argv[]) {
 
     /* Initializes the structure Game */
     game *current_game = (game *) malloc(sizeof(game));
-    trials = 1;
+
     current_game->current_word = malloc(sizeof(char) * MAX_WORD_SIZE + 1);
 
     // reads the input from the command line and defines a new IP and port if they were passed as arguments
@@ -719,9 +799,11 @@ int main(int argc, char *argv[]) {
 
             case GUESS:
                 //printf("Guess! Arg: %s", cmd);
-                send_message_udp(ip, port, cmd, response);
-                trials++;
-
+                res = send_message_udp(ip, port, cmd, response);
+                if (res == -1){
+                    return -1;
+                }
+                process_guess(current_game, response, cmd);
                 break;
 
             case SCOREBOARD:
@@ -758,7 +840,7 @@ int main(int argc, char *argv[]) {
                 printf("ERROR (ISTO É MEU, NÃO DO SERVER)!");
                 break;
         }
-
+        printf("TRIALSSSSSSS_GLOBAL: %d\n", trials);
         memset(response, 0, CHUNK_SIZE);
     }
 

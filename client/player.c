@@ -263,8 +263,11 @@ int process_play(game* current_game, char* response, char* cmd){
             current_game->curr_errors++; // Increments the current errors
         }
 
-        else if (strcmp(status, "OVR") == 0)
+        else if (strcmp(status, "OVR") == 0) {
             printf(PLAY_OVR);
+            printf(START_ANOTHER_GAME);
+            return 0;
+        }
 
         else if (strcmp(status, "INV") == 0)
             printf(PLAY_INV);

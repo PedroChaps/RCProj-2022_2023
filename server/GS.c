@@ -254,7 +254,6 @@ int quit_game(char *command, char *response) {
 }
 
 int guess_word(char *command, char *response) {
-
     FILE *fp;
     char *line = NULL;
     char word[30+1];     // word read from the command 
@@ -274,17 +273,16 @@ int guess_word(char *command, char *response) {
 
     // extracts the PLID from the command
     command = strtok(NULL, " ");
-    command[strlen(command) - 1] = '\0';
     strcpy(plid, command);
 
-    // extracts the word from the command
-    command = strtok(NULL, " ");
-    command[strlen(command) - 1] = '\0';
-    strcpy(word, command);
 
     // extracts the word from the command
     command = strtok(NULL, " ");
-    command[strlen(command) - 1] = '\0';
+    strcpy(word, command);
+
+    
+    // extracts the word from the command
+    command = strtok(NULL, " ");
     trial = atoi(command);
 
     // builds the file path
@@ -292,14 +290,9 @@ int guess_word(char *command, char *response) {
     strcat(filepath, plid);
     strcat(filepath, ".txt");
 
-    if (access(filepath, F_OK) != 0){    // checks if the file exists
-        strcpy(response, "RWG ERR\n");  // TODO check if PLID and PWG syntax are valid
-        return -1;
-    }
-
-    // Saves the information in the new file
     fp = fopen(filepath, "r");
     if (fp == NULL) {
+        strcpy(response, "RWG ERR\n");  // TODO check if PLID and PWG syntax are valid
         return -1;
     }
 
@@ -307,13 +300,11 @@ int guess_word(char *command, char *response) {
     command = strtok(line, " ");
     strcpy(word_read, command);
     command = strtok(NULL, " ");
-    command = strtok(NULL, " ");
+    command = strtok(NULL, "\0");
     command[strlen(command) - 1] = '\0';
     nr_errors = atoi(command);
 
-
-
-    trial_server = get_nr_lines(filepath) - 1;
+    trial_server = get_nr_lines(filepath); // default + 1
 
 
     if (trial != trial_server){
@@ -329,6 +320,7 @@ int guess_word(char *command, char *response) {
         if (code == 'G'){
             command = strtok(line, " ");
             command = strtok(NULL, " ");
+            printf("word_guessed: %s\n", word_guessed);
             strcpy(word_guessed, command);
 
             if (strcmp(word, word_guessed) == 0){
@@ -503,8 +495,9 @@ int process_messages_UDP(char *port){
             exit(1);
         }
 
-        // Resets the memory of `response`
+        // Resets the memory of `response` and 'command'
         memset(response, 0, CHUNK_SIZE);
+        memset(buffer, 0, 128);
     }
 
     freeaddrinfo(res);
@@ -516,7 +509,6 @@ int process_messages_TCP(char *port){
 
     int fd, newfd, errcode, pid, ret; // newfd é fd da nova ligação (existem 2 sockets em TCP)
     ssize_t n;
-    socklen_t addrlen;
     struct addrinfo hints, *res;
     struct sockaddr_in addr;
     char buffer[128], *ptr;
@@ -549,13 +541,12 @@ int process_messages_TCP(char *port){
     /* Loop para processar uma socket de cada vez */
     while (1) {
 
+        socklen_t addrlen = sizeof(addr);
         // wait for a new connection
-        do {
-            newfd = accept(fd, (struct sockaddr *) &addr, &addrlen);
-        } while (newfd == -1 && errno == EINTR);
-        if (newfd == -1) {
+        newfd = accept(fd, (struct sockaddr *) &addr, &addrlen);
+        if (newfd == -1 && errno == EINTR) {
             printf("%d", errno);
-            printf("%s\n", strerror(errno));
+            printf(" %s\n", strerror(errno));
             exit(1);
         }
 

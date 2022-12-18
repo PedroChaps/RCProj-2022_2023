@@ -417,6 +417,7 @@ int send_message_udp(char *ip, char* port, char* cmd, char* buffer) {
         return -1;
     }
 
+    // FIXME debug message, remove later
     write(1, "DEBUG: ", 6);
     write(1, buffer, n);
 
@@ -590,6 +591,7 @@ int send_message_tcp(char *ip, char* port, char* cmd) {
 
     /* Imprime a mensagem "echo" e o conteúdo do buffer (ou seja, o que foi recebido
     do servidor) para o STDOUT (fd = 1) */
+    // FIXME remove later, just for debugging
     write(1, "DEBUG: ", 6);
     write(1, status, strlen(status));
     write(1, "\n", 1);

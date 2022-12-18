@@ -25,6 +25,21 @@ void printUsage() {
     printf("Usage: ./GS word_file [-p GSport] [-v]");
 }
 
+// Returns the number of lines of a file (including the first one!)
+int get_nr_lines(char *filename) {
+    FILE *fp = fopen(filename, "r");
+    char c;
+    int lines = 0;
+    while ((c = (char) fgetc(fp)) != EOF) {
+        if (c == '\n') {
+            lines++;
+        }
+    }
+    fclose(fp);
+    return lines;
+
+}
+
 
 int processInput(int argc, char *argv[], char *port) {
 
@@ -38,14 +53,7 @@ int processInput(int argc, char *argv[], char *port) {
     }
     strcpy(word_file, argv[1]);
 
-    // Saves the number of lines of the file
-    FILE *fp = fopen(word_file, "r");
-    char c;
-    while ((c = (char) fgetc(fp)) != EOF) {
-        if (c == '\n') {
-            word_file_size++;
-        }
-    }
+    word_file_size = get_nr_lines(word_file);
 
     // Checks for the -p and -v flags
     for (int i = 1; i < argc; i++) {
@@ -176,6 +184,7 @@ int start_game(char *command, char *response){
 
     splitted = strtok(NULL, " ");
     strcpy(hint, splitted);
+    hint[strlen(hint) - 1] = '\0';
 
     fclose(fp);
 
@@ -188,6 +197,8 @@ int start_game(char *command, char *response){
     fputs(word, fp);
     fputs(" ", fp);
     fputs(hint, fp);
+    fputs(" 0\n", fp); // saves the number of errors
+
 
     fclose(fp);
 
@@ -206,6 +217,189 @@ int start_game(char *command, char *response){
 
     return 0;
 }
+
+int quit_game(char *command, char *response) {
+
+    FILE *fp;
+    char *line = NULL;
+    size_t len = 0;
+    ssize_t read;
+
+    // extracts the PLID from the command
+    command = strtok(NULL, " ");
+    command[strlen(command) - 1] = '\0';
+    char *plid = command;
+
+    // builds the file path
+    char filepath[6 + 15 + 1] = "games/game_";
+    strcat(filepath, plid);
+    strcat(filepath, ".txt");
+
+    // checks if the player has any ongoing game with atleast one move.
+    // if he does, then remove the file and send a response.
+    if (access(filepath, F_OK) == 0){
+
+        remove(filepath);
+        strcpy(response, "RQT OK\n");
+        return 0;
+    }
+    else if (access(filepath, F_OK) == -1) {
+        strcpy(response, "RQT NOK\n");
+        return 1;
+    }
+    else{
+        strcpy(response, "RQT ERR\n");
+        return 1;
+    }
+}
+
+int guess_word(char *command, char *response) {
+
+    FILE *fp;
+    char *line = NULL;
+    char word[30+1];     // word read from the command 
+    char word_read[30+1]; // word read from the file
+    char plid[6+1];
+    size_t len = 0;
+    ssize_t read;
+    int trial;
+    int trial_server;
+    char buffer_aux[2+1]; //max size of a trial + \0
+    char code;
+    char *word_guessed;
+    int *nr_letters = (int *) malloc(sizeof(int));
+    int *max_errors = (int *) malloc(sizeof(int));
+    int nr_errors, i;
+    
+
+    // extracts the PLID from the command
+    command = strtok(NULL, " ");
+    command[strlen(command) - 1] = '\0';
+    strcpy(plid, command);
+
+    // extracts the word from the command
+    command = strtok(NULL, " ");
+    command[strlen(command) - 1] = '\0';
+    strcpy(word, command);
+
+    // extracts the word from the command
+    command = strtok(NULL, " ");
+    command[strlen(command) - 1] = '\0';
+    trial = atoi(command);
+
+    // builds the file path
+    char filepath[6 + 15 + 1] = "games/game_";
+    strcat(filepath, plid);
+    strcat(filepath, ".txt");
+
+    if (access(filepath, F_OK) != 0){    // checks if the file exists
+        strcpy(response, "RWG ERR\n");  // TODO check if PLID and PWG syntax are valid
+        return -1;
+    }
+
+    // Saves the information in the new file
+    fp = fopen(filepath, "r");
+    if (fp == NULL) {
+        return -1;
+    }
+
+    read = getline(&line, &len, fp);
+    command = strtok(line, " ");
+    strcpy(word_read, command);
+    command = strtok(NULL, " ");
+    command = strtok(NULL, " ");
+    command[strlen(command) - 1] = '\0';
+    nr_errors = atoi(command);
+
+
+
+    trial_server = get_nr_lines(filepath) - 1;
+
+
+    if (trial != trial_server){
+        strcpy(response, "RWG INV ");
+        sprintf(buffer_aux, "%d", trial_server);
+        strcat(response, buffer_aux);
+        strcat(response, "\n");
+        return -1;
+    } 
+
+    while (getline(&line, &len, fp) > 0){
+        code = fgetc(line);
+        fgetc(line); // reads the space
+        if (code == 'G'){
+            command =  strtok(line, "\n");
+            strcpy(word_guessed, command);  
+
+            if (strcmp(word, word_guessed) == 0){
+                strcpy(response, "RWG DUP ");
+                sprintf(buffer_aux, "%d", trial_server);
+                strcat(response, buffer_aux);
+                strcat(response, "\n");
+                return -1;
+            }
+        }
+    }
+    fclose(fp);
+
+    if (strcmp(word, word_read) == 0){
+        strcpy(response, "RWG WIN ");
+        sprintf(buffer_aux, "%d", trial_server);
+        strcat(response, buffer_aux);
+        strcat(response, "\n");
+        return 0;
+    }
+    else{
+        get_nr_letters_and_errors(word_read, &nr_letters, &max_errors);
+        if (nr_errors >= *max_errors){
+            strcpy(response, "RWG OVR ");
+            sprintf(buffer_aux, "%d", trial_server);
+            strcat(response, buffer_aux);
+            strcat(response, "\n");
+            return 0;
+        }
+
+        fp = fopen(filepath, "a");
+        if (fp == NULL) {
+            return -1;
+        }
+        fprintf(fp, "G %s\n", word);
+        fclose(fp);
+
+        
+        fp = fopen("file.txt", "r+");  // Open the file for reading and writing
+
+        // Move the file pointer to the beginning of the file
+        fseek(fp, 0, SEEK_SET);
+
+        // Read the first line of the file
+        char buffer[1024];
+        fgets(buffer, 1024, fp);
+        i = strlen(buffer) - 1;
+        // Modify the contents of the buffer to contain the new first line of the file
+        while(buffer[i] != ' '){
+            i--;
+        }
+        i++; // i is now the position of the first digit of the number of errors
+        sprintf(buffer_aux, "%d", nr_errors + 1);
+        strcpy(buffer + i, buffer_aux);
+
+        // Seek back to the beginning of the file and write the modified buffer to the file
+        fseek(fp, 0, SEEK_SET);
+        fputs(buffer, fp);
+
+        fclose(fp);  // Close the file
+
+        strcpy(response, "RWG NOK ");
+        sprintf(buffer_aux, "%d", trial_server);
+        strcat(response, buffer_aux);
+        strcat(response, "\n");
+        return 1;
+    }
+    
+    // checks if the player has any ongoing game with atleast one move.
+    // if he does, then remove the file and send a response.
+} 
 
 
 /* Recieves a command from the client and process it. Saves what is to be sent back to the client in `response` */
@@ -228,9 +422,9 @@ int process_client_message(char *command, char *response){
     //        return guess_word(command, response);
     //    }
     //
-    //    else if (strcmp(splitted, "GSB") == 0) {
-    //        return get_scoreboard(command, response);
-    //    }
+        else if (strcmp(splitted, "GSB") == 0) {
+            return get_scoreboard(command, response);
+        }
     //
     //    else if (strcmp(splitted, "GHL") == 0) {
     //        return get_hint(command, response);
@@ -240,13 +434,10 @@ int process_client_message(char *command, char *response){
     //        return get_state(command, response);
     //    }
     //
-    //    else if (strcmp(splitted, "QUT") == 0) {
-    //        return quit_game(command, response);
-    //    }
+        else if (strcmp(splitted, "QUT") == 0) {
+            return quit_game(command, response);
+        }
     //
-    //    else if (strcmp(splitted, "REV") == 0) {
-    //        return reveal_word(command, response);
-    //    }
     //
     //    else {
     //        TODO implementar um erro
@@ -301,7 +492,6 @@ int process_messages_UDP(char *port){
         // FIXME Debug message, remove later
         write(1, "DEBUG: ", 6);
         write(1, buffer, n);
-        write(1, "\n", 1);
 
         // Processes the message recieved
         process_client_message(buffer, response);

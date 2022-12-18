@@ -875,15 +875,16 @@ int main(int argc, char *argv[]) {
  *
  * */
 
-// TODO Ver mallocs e frees todos
-// TODO implementar lógica do play ->
+// TODO: Ver mallocs e frees todos
+// TODO: No INV colocar os trials do cliente iguais aos do servidor
+// TODO: implementar lógica do play ->
 //      - [ ] Preencher os underscores com as letras nas posições certas;
 //      - [ ] incrementar trials como deve de ser;
 //      - [ ] incrementar número de erros como deve de ser
 //      - [ ] verificar se a palavra já foi descoberta (fazer print de um "parabéns" com stats quando vem o "RLG WIN ?")
 //      - [ ] ver se nos escapou alguma coisa nos outros status do play
 //      - [ ] Fazer print do estado do jogo (palavra, erros, trials, etc) a cada play
-// TODO implementar lógica do guess ->
+// TODO: implementar lógica do guess ->
 //      - [ ] incrementar trials como deve de ser;
 //      - [ ] incrementar trials como deve de ser;
 //      - [ ] incrementar número de erros como deve de ser

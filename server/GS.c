@@ -9,6 +9,9 @@
 #include <stdio.h>
 #include <errno.h>
 #include <time.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <unistd.h>
 
 #define CHUNK_SIZE 1024
 
@@ -98,7 +101,7 @@ int start_game(char *command, char *response){
     char *plid = command;
 
     // builds the file path
-    char filepath[6 + 15 + 1] = "games/game_";
+    char filepath[6 + 15 + 1] = "GAMES/game_";
     strcat(filepath, plid);
     strcat(filepath, ".txt");
 
@@ -231,7 +234,7 @@ int quit_game(char *command, char *response) {
     char *plid = command;
 
     // builds the file path
-    char filepath[6 + 15 + 1] = "games/game_";
+    char filepath[6 + 15 + 1] = "GAMES/game_";
     strcat(filepath, plid);
     strcat(filepath, ".txt");
 
@@ -251,6 +254,56 @@ int quit_game(char *command, char *response) {
         strcpy(response, "RQT ERR\n");
         return 1;
     }
+}
+
+int get_timestamp(char *buffer){
+
+        time_t rawtime;
+        struct tm * timeinfo;
+
+        time (&rawtime);
+        timeinfo = localtime (&rawtime);
+
+        strftime(buffer,80,"%Y%m%d_%H:%M:%S",timeinfo);
+
+        return 0;
+}
+
+int move_and_rename(char *source_path, char *dst_dir, char *code) {
+
+    // calculates the filename of the file to be moved
+    char *filename = (char *) malloc(sizeof(char) * (strlen("YYYYMMDD_HHMMSS_X.txt") + 1));
+    if (filename == NULL) {
+        return -1;
+    }
+    get_timestamp(filename); // gets the timestamp
+    strcat(filename, "_"); // adds the underscore
+    strcat(filename, code); // adds the code
+    strcat(filename, ".txt"); // adds the extension
+
+    // Verifies if the destination directory already exists
+    struct stat st = {0};
+    if (stat(dst_dir, &st) == -1) {
+        mkdir(dst_dir, 0700);
+    }
+
+    // Create the full path to the destination file by concatenating the directory and filename
+    size_t dst_path_size = strlen(dst_dir) + strlen(filename) + 2;  // +2 for the '/' and '\0' characters
+    snprintf(dst_dir, dst_path_size, "%s/%s", dst_dir, filename);
+
+    // Rename the file
+    int result = rename(source_path, dst_dir);
+    if (result == 0) {
+        printf("File moved and renamed successfully\n");
+    } else {
+        perror("Error renaming file");
+    }
+
+    // Free the dynamically allocated memory
+    free(source_path);
+    free(dst_dir);
+
+    return 0;
 }
 
 int guess_word(char *command, char *response) {
@@ -286,7 +339,7 @@ int guess_word(char *command, char *response) {
     trial = atoi(command);
 
     // builds the file path
-    char filepath[6 + 15 + 1] = "games/game_";
+    char filepath[6 + 15 + 1] = "GAMES/game_";
     strcat(filepath, plid);
     strcat(filepath, ".txt");
 
@@ -335,13 +388,27 @@ int guess_word(char *command, char *response) {
     fclose(fp);
 
     if (strcmp(word, word_read) == 0){
+
+        // Creates the variables to call `move_and_rename()`
+        char *filepath_ptr = (char *) malloc(sizeof(char) * (strlen("GAMES/game_") + strlen(plid) + strlen(".txt") + 1));
+        char *folderpath = (char *) malloc(sizeof(char) * (6 + 15 + 1));
+        if (folderpath == NULL || filepath_ptr == NULL) {
+            return -1;
+        }
+        strcpy(folderpath, "GAMES/");
+        strcat(folderpath, plid);
+
+        // Move the file to the `GAMES/PLID` folder
+        move_and_rename(filepath_ptr, folderpath, "W");
+
+        // Creates the response
         strcpy(response, "RWG WIN ");
         sprintf(buffer_aux, "%d", trial_server);
         strcat(response, buffer_aux);
         strcat(response, "\n");
         return 0;
     }
-    else{
+    else {
         get_nr_letters_and_errors(word_read, nr_letters, max_errors);
         if (nr_errors >= *max_errors){
             strcpy(response, "RWG OVR ");

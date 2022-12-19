@@ -271,6 +271,13 @@ int get_timestamp(char *buffer){
 
 int move_and_rename(char *source_path, char *dst_dir, char *code) {
 
+    // Check if the destination directory exists
+    struct stat st;
+    if (stat(dst_dir, &st) == -1) {
+        // If the directory does not exist, create it
+        mkdir(dst_dir, 0700);
+    }
+
     // calculates the filename of the file to be moved
     char *filename = (char *) malloc(sizeof(char) * (strlen("YYYYMMDD_HHMMSS_X.txt") + 1));
     if (filename == NULL) {
@@ -281,17 +288,11 @@ int move_and_rename(char *source_path, char *dst_dir, char *code) {
     strcat(filename, code); // adds the code
     strcat(filename, ".txt"); // adds the extension
 
-    // Verifies if the destination directory already exists
-    struct stat st = {0};
-    if (stat(dst_dir, &st) == -1) {
-        mkdir(dst_dir, 0700);
-    }
 
-    // Create the full path to the destination file by concatenating the directory and filename
-    size_t dst_path_size = strlen(dst_dir) + strlen(filename) + 2;  // +2 for the '/' and '\0' characters
-    snprintf(dst_dir, dst_path_size, "%s/%s", dst_dir, filename);
+   // Create the full path to the destination file by concatenating the directory and filename
+   strcat(dst_dir, filename);
 
-    // Rename the file
+    // use the rename function to move the file
     int result = rename(source_path, dst_dir);
     if (result == 0) {
         printf("File moved and renamed successfully\n");
@@ -300,8 +301,7 @@ int move_and_rename(char *source_path, char *dst_dir, char *code) {
     }
 
     // Free the dynamically allocated memory
-    free(source_path);
-    free(dst_dir);
+    // free(filename); TODO: ver o que se passa aqui porque está a dar "munmap_chunk(): invalid pointer"
 
     return 0;
 }
@@ -390,16 +390,17 @@ int guess_word(char *command, char *response) {
     if (strcmp(word, word_read) == 0){
 
         // Creates the variables to call `move_and_rename()`
-        char *filepath_ptr = (char *) malloc(sizeof(char) * (strlen("GAMES/game_") + strlen(plid) + strlen(".txt") + 1));
         char *folderpath = (char *) malloc(sizeof(char) * (6 + 15 + 1));
-        if (folderpath == NULL || filepath_ptr == NULL) {
+        if (folderpath == NULL) {
             return -1;
         }
         strcpy(folderpath, "GAMES/");
         strcat(folderpath, plid);
+        strcat(folderpath, "/");
+
 
         // Move the file to the `GAMES/PLID` folder
-        move_and_rename(filepath_ptr, folderpath, "W");
+        move_and_rename(filepath, folderpath, "W");
 
         // Creates the response
         strcpy(response, "RWG WIN ");
@@ -423,13 +424,21 @@ int guess_word(char *command, char *response) {
             return -1;
         }
         fprintf(fp, "G %s\n", word);
-        fclose(fp);
+        // close the file
+        if (fclose(fp) != 0) {
+            return -1;
+        }
 
         
-        fp = fopen("file.txt", "r+");  // Open the file for reading and writing
+        fp = fopen(filepath, "r+");  // Open the file for reading and writing
+        if (fp == NULL) {
+            return -1;
+        }
 
         // Move the file pointer to the beginning of the file
-        fseek(fp, 0, SEEK_SET);
+        if (fseek(fp, 0, SEEK_SET) != 0)
+            return -1;
+        
 
         // Read the first line of the file
         char buffer[1024];

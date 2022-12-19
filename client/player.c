@@ -65,7 +65,7 @@
 #define min(a, b) (((a) < (b)) ? (a) : (b))
 
 int trials = 0;
-char plid[] = "000000";
+char plid[6 + 1];
 typedef struct game {
     int max_errors;
     int curr_errors;
@@ -334,7 +334,7 @@ int process_guess(game* current_game, char* response, char* cmd){
         strcmp(splitted, "NOK") != 0 && strcmp(splitted, "OVR") != 0 &&
         strcmp(splitted, "INV") != 0 && strcmp(splitted, "ERR") != 0) {
 
-        printf(EXIT_SUCCESSFUL);
+        printf(GENERIC_ERROR);
         return 0;
     }
 

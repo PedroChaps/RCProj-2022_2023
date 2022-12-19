@@ -266,7 +266,7 @@ int guess_word(char *command, char *response) {
     int trial_server;
     char buffer_aux[2+1]; //max size of a trial + \0
     char code;
-    char *word_guessed;
+    char *word_guessed = (char *) malloc(sizeof(char) * (30 + 1));
     int *nr_letters = (int *) malloc(sizeof(int));
     int *max_errors = (int *) malloc(sizeof(int));
     int nr_errors, i;
@@ -325,11 +325,11 @@ int guess_word(char *command, char *response) {
     } 
 
     while (getline(&line, &len, fp) > 0){
-        code = fgetc(line);
-        fgetc(line); // reads the space
+        code = *line; // reads the space
         if (code == 'G'){
-            command =  strtok(line, "\n");
-            strcpy(word_guessed, command);  
+            command = strtok(line, " ");
+            command = strtok(NULL, " ");
+            strcpy(word_guessed, command);
 
             if (strcmp(word, word_guessed) == 0){
                 strcpy(response, "RWG DUP ");
@@ -350,7 +350,7 @@ int guess_word(char *command, char *response) {
         return 0;
     }
     else{
-        get_nr_letters_and_errors(word_read, &nr_letters, &max_errors);
+        get_nr_letters_and_errors(word_read, nr_letters, max_errors);
         if (nr_errors >= *max_errors){
             strcpy(response, "RWG OVR ");
             sprintf(buffer_aux, "%d", trial_server);
@@ -418,13 +418,13 @@ int process_client_message(char *command, char *response){
     //        return play_letter(command, response);
     //    }
     //
-    //    else if (strcmp(splitted, "PWG") == 0) {
-    //        return guess_word(command, response);
-    //    }
+    else if (strcmp(splitted, "PWG") == 0) {
+        return guess_word(command, response);
+    }
     //
-        else if (strcmp(splitted, "GSB") == 0) {
-            return get_scoreboard(command, response);
-        }
+    //        else if (strcmp(splitted, "GSB") == 0) {
+    //            return get_scoreboard(command, response);
+    //        }
     //
     //    else if (strcmp(splitted, "GHL") == 0) {
     //        return get_hint(command, response);

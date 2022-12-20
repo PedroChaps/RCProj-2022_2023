@@ -587,7 +587,7 @@ int send_message_tcp(char *ip, char* port, char* cmd) {
     else {
         int toRead = filesize;
 
-        // Reads the image from the server and saves it locally
+        //reads anything big enough from the server
         while (toRead > 0) {
             nread = read_chunk(buffer, fd, min(CHUNK_SIZE, toRead));
             write(1, buffer, nread);
@@ -771,7 +771,7 @@ int main(int argc, char *argv[]) {
     strcpy(port, "58031");
 
     char *ip = malloc(sizeof("___.___.___.___"));
-    strcpy(ip, "193.136.138.142"); // ip do tejo. Depois, substituir por 127.0.0.1.
+    strcpy(ip, "127.0.0.1"); // default ip
 
     /* Initializes the structure Game */
     game *current_game = (game *) malloc(sizeof(game));
@@ -852,7 +852,7 @@ int main(int argc, char *argv[]) {
                 break;
 
             default:
-                printf("ERROR (ISTO É MEU, NÃO DO SERVER)!");
+                printf("ERROR (ISTO É MEU, NÃO DO SERVER)!\n");
                 break;
         }
         //printf("TRIALSSSSSSS_GLOBAL: %d\n", trials);
@@ -873,7 +873,7 @@ int main(int argc, char *argv[]) {
 // Os sockets abrem e fecham para cada comando (UDP e TCP)
 
 /*
- * TODO
+ * TODO:
  * CLIENTE
  * - Funções chamadas dentro de um while, se der -1, podem decidir terminar ou dar uma mensagem de erro e de seguida ler o próximo comando
  * - Por timer em funções que acham que faz sentido
@@ -883,7 +883,7 @@ int main(int argc, char *argv[]) {
  * - Funções chamadas dentro de um while. ser -1, passam para próximo pedido
  *
  * */
-
+// TODO: Somoes bué fixes
 // TODO: Ver mallocs e frees todos
 // TODO: primeiro QUIT não envia o PLID para o servidor
 // TODO: No INV colocar os trials do cliente iguais aos do servidor

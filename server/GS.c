@@ -12,8 +12,10 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <fcntl.h>
 
 #define CHUNK_SIZE 1024
+#define min(a, b) (((a) < (b)) ? (a) : (b))
 
 
 extern int errno;
@@ -273,9 +275,7 @@ int move_and_rename(char *source_path, char *dst_dir, char *code) {
 
     // use the rename function to move the file
     int result = rename(source_path, dst_dir);
-    if (result == 0) {
-        printf("File moved and renamed successfully\n");
-    } else {
+    if (result != 0) {
         perror("Error renaming file");
     }
 
@@ -779,14 +779,109 @@ int guess_word(char *command, char *response) {
 
 }
 
+// Reads a chunk of 1024 bytes from the server to the buffer
+int read_chunk(char *buffer, int fd, int toRead){
+
+    ssize_t nleft, n_read;
+    n_read = read(fd,buffer,toRead);
+    return n_read;
+}
+
+int process_hint(char *command, int fd){
+
+    // extracts the PLID
+    char *splitted = strtok(command, " ");
+    splitted = strtok(NULL, " ");
+    char *hint_name = (char *) malloc(sizeof(char) * (24+ 1));
+    int nread;
+
+    char *plid = (char *) malloc(sizeof(char) * (strlen(splitted) + 1));
+    if (plid == NULL) {
+        return -1;
+    }
+    strcpy(plid, splitted);
+
+    // create the filepath GAMES/game_PLID.txt
+    char *filepath = (char *) malloc(sizeof(char) * (20+1));
+    if (filepath == NULL) { 
+        return -1;
+    }
+    strcpy(filepath, "GAMES/game_");
+    strcat(filepath, plid);
+    strcat(filepath, ".txt");
+
+    // open the file and read the second word from the first line and saves it in hint_name
+    FILE *fp = fopen(filepath, "r");
+    if (fp == NULL) {
+        // writes the error message to the client
+        char *response = (char *) malloc(sizeof(char) * (strlen("RHL NOK\n") + 1));
+        if (response == NULL) {
+            return -1;
+        }
+        strcpy(response, "RHL NOK\n");
+        write(fd, response, strlen(response));
+        free(response);
+        return -1;
+    }
+    char buffer[1024];
+    fgets(buffer, 1024, fp);
+    fclose(fp);
+    splitted = strtok(buffer, " ");
+    splitted = strtok(NULL, " ");
+    strcpy(hint_name, splitted);
+
+    // saves the size of the hint_name file in hint_size
+    struct stat st;
+    stat(hint_name, &st);
+    int hint_size = st.st_size;
+
+    //writes the response to the client, containing "RHL OK ",the name of the hint file, the size of the hint file
+    char *response = (char *) malloc(sizeof(char) * (strlen("RHL OK ") + strlen(hint_name) + 10 + 1));
+    if (response == NULL) {
+        return -1;
+    }
+    strcpy(response, "RHL OK ");
+    strcat(response, hint_name);
+    strcat(response, " ");
+    sprintf(buffer, "%d", hint_size);
+    strcat(response, buffer);
+
+    // sends the response to the client
+    write(fd, response, strlen(response));
+
+    // appends to the response buffer the contents of the hint file in chuncks of 1024 bytes using write_chunk()
+    int toRead = hint_size;
+
+    // opens the hint file and associates it to a File Descriptor
+    int fd_hint = open(hint_name, O_RDONLY);
+    if (fd_hint == -1) {
+        return -1;
+    }
+
+    // Reads the image from the server and saves it locally
+    while (toRead > 0) {
+        nread = read_chunk(buffer, fd, min(CHUNK_SIZE, toRead));
+        write(fd, buffer, nread);
+        toRead -= (int) nread;
+    }
+    // closes the file descriptor
+    close(fd_hint);
+    close(fd);
+
+}
+
+
+
 
 /* Recieves a command from the client and process it. Saves what is to be sent back to the client in `response` */
-int process_client_message(char *command, char *response){
+int process_client_message(char *command, char *response, int fd){
 
     // Reads the command code
     char *splitted = strtok(command, " ");
 
     // Choses based on the command code
+
+    // UDP FUNCTIONS
     if (strcmp(splitted, "SNG") == 0) {
         return start_game(command, response);
     }
@@ -800,8 +895,19 @@ int process_client_message(char *command, char *response){
         return quit_game(command, response);
     }
 
+    // TCP FUNCTIONS
+    // else if (strcmp(splitted, "GSB") == 0) {
+    //     return quit_game(command, response);
+    // }
+    else if (strcmp(splitted, "GHL") == 0) {
+        return process_hint(command, fd);     //TODO: criar abstração a enviar ficheiro
+    }
+    // else if (strcmp(splitted, "STA") == 0) {
+    //     return quit_game(command, response);
+    // }
+
 //    else {
-//        TODO implementar um erro
+//        TODO: implementar um erro
 //        strcpy(response, "ERR");
 //        return -1;
 //    }
@@ -855,7 +961,7 @@ int process_messages_UDP(char *port){
         write(1, buffer, n);
 
         // Processes the message recieved
-        process_client_message(buffer, response);
+        process_client_message(buffer, response, -1);
 
 
         // Sends the response to the client. The maximum size is CHUNK_SIZE
@@ -874,6 +980,14 @@ int process_messages_UDP(char *port){
 }
 
 
+// Writes a chunk of 1024 bytes from the server to the buffer
+int write_chunk(char *buffer, int fd, int toRead){
+
+    ssize_t nleft, n_read;
+    n_read = write(fd,buffer,toRead);
+    return n_read;
+}
+
 int process_messages_TCP(char *port){
 
     int fd, newfd, errcode, pid, ret; // newfd é fd da nova ligação (existem 2 sockets em TCP)
@@ -882,6 +996,7 @@ int process_messages_TCP(char *port){
     struct sockaddr_in addr;
     char buffer[128], *ptr;
     ssize_t nw;
+    char *chunk = (char *) malloc(CHUNK_SIZE * sizeof(char));
 
     fd = socket(AF_INET, SOCK_STREAM, 0);
     if (fd == -1) {
@@ -929,7 +1044,8 @@ int process_messages_TCP(char *port){
             while ((n = read(newfd, buffer, 128)) != 0) {
                 if (n == -1) /*error*/
                     exit(1);
-                ptr = &buffer[0];
+                // Processes the message recieved
+                process_client_message(buffer, chunk, newfd);
                 while (n > 0) {
                     if ((nw = write(newfd, ptr, n)) <= 0) /*error*/
                         exit(1);
@@ -973,15 +1089,15 @@ int main(int argc, char *argv[]) {
 
     // Child process
     if (fork() == 0) {
-        process_messages_TCP(port);
-    } else {
         process_messages_UDP(port);
+    } else {
+        process_messages_TCP(port);
     }
 
     return 0;
 }
 
-/* TODO
+/* TODO:
  * [ ] - Implementar o -v (verbose)
  *
  * */

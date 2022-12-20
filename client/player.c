@@ -84,7 +84,12 @@ void print_current_word(game *game){
         printf("%c ", game->current_word[i]);
     }
     printf("This is your %dº trial.\n", trials);
-    printf("You still have %d errors left (%d/%d).\n", (game->max_errors - game->curr_errors), game->curr_errors, game->max_errors);
+    if (game->max_errors == game->curr_errors){
+        printf("No pressure but no more errors, buddy. It's your last shot!!\n");
+    }
+    else{
+        printf("You still have %d errors left (%d/%d).\n", (game->max_errors - game->curr_errors), game->curr_errors, game->max_errors);
+    }
 }
 
 // TODO Quando começo um cliente e o servidor ainda está com um jogo ativo, tenho que confiar nas trials que ele me dá
@@ -363,6 +368,8 @@ int process_guess(game* current_game, char* response, char* cmd){
 
     else if (strcmp(status, "OVR") == 0){
             printf(PLAY_OVR);
+            printf(START_ANOTHER_GAME);
+            return 0;
     }
 
     else if (strcmp(status, "INV") == 0)
@@ -757,9 +764,11 @@ int main(int argc, char *argv[]) {
     
     char* response = (char*) malloc(sizeof(char) * CHUNK_SIZE);
     int res, toExit = 0;
-    int cmdCode;                                            // The Command that the user passes
+    int cmdCode;                                             // The Command that the user passes
     char *cmd = (char*) malloc(sizeof(char)*1024);      // The argument of the command, if it exists
-    char* port = "58011";                                   // porta do tejo. TODO substituir por 58000+GN;
+
+    char* port = (char*) malloc(sizeof(char) * 6);      // porta do tejo. TODO substituir por 58000+GN;
+    strcpy(port, "58031");
 
     char *ip = malloc(sizeof("___.___.___.___"));
     strcpy(ip, "193.136.138.142"); // ip do tejo. Depois, substituir por 127.0.0.1.
@@ -876,6 +885,7 @@ int main(int argc, char *argv[]) {
  * */
 
 // TODO: Ver mallocs e frees todos
+// TODO: primeiro QUIT não envia o PLID para o servidor
 // TODO: No INV colocar os trials do cliente iguais aos do servidor
 // TODO: implementar lógica do play ->
 //      - [ ] Preencher os underscores com as letras nas posições certas;

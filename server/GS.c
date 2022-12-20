@@ -170,7 +170,7 @@ int start_game(char *command, char *response){
     if (fp == NULL) {
         return -1;
     }
-    for (int i = 0; i < random_line; i++) { // skips the lines until the random line
+    for (int i = 0; i <= random_line; i++) { // skips the lines until the random line
         read = getline(&line, &len, fp);
     }
 
@@ -202,7 +202,22 @@ int start_game(char *command, char *response){
     fputs(hint, fp);
     fputs(" 0\n", fp); // saves the number of errors
 
+    fclose(fp);
 
+    // Create the curr_word_PLID.txt file
+    char currword_filepath[27] = "GAMES/curr_word_";
+    strcat(currword_filepath, plid);
+    strcat(currword_filepath, ".txt");
+    fp = fopen(currword_filepath, "w");
+    if (fp == NULL) {
+        return -1;
+    }
+
+    // Sets `-` for each letter of the word
+    for (int i = 0; i < strlen(word); i++) {
+        fputs("-", fp);
+    }
+    fputs("\0", fp);
     fclose(fp);
 
     // Builds the response (`RSG OK n_letters max_errors`),
@@ -221,52 +236,17 @@ int start_game(char *command, char *response){
     return 0;
 }
 
-int quit_game(char *command, char *response) {
-
-    FILE *fp;
-    char *line = NULL;
-    size_t len = 0;
-    ssize_t read;
-
-    // extracts the PLID from the command
-    command = strtok(NULL, " ");
-    command[strlen(command) - 1] = '\0';
-    char *plid = command;
-
-    // builds the file path
-    char filepath[6 + 15 + 1] = "GAMES/game_";
-    strcat(filepath, plid);
-    strcat(filepath, ".txt");
-
-    // checks if the player has any ongoing game with atleast one move.
-    // if he does, then remove the file and send a response.
-    if (access(filepath, F_OK) == 0){
-
-        remove(filepath);
-        strcpy(response, "RQT OK\n");
-        return 0;
-    }
-    else if (access(filepath, F_OK) == -1) {
-        strcpy(response, "RQT NOK\n");
-        return 1;
-    }
-    else{
-        strcpy(response, "RQT ERR\n");
-        return 1;
-    }
-}
-
 int get_timestamp(char *buffer){
 
-        time_t rawtime;
-        struct tm * timeinfo;
+    time_t rawtime;
+    struct tm * timeinfo;
 
-        time (&rawtime);
-        timeinfo = localtime (&rawtime);
+    time (&rawtime);
+    timeinfo = localtime (&rawtime);
 
-        strftime(buffer,80,"%Y%m%d_%H:%M:%S",timeinfo);
+    strftime(buffer,80,"%Y%m%d_%H:%M:%S",timeinfo);
 
-        return 0;
+    return 0;
 }
 
 int move_and_rename(char *source_path, char *dst_dir, char *code) {
@@ -288,9 +268,8 @@ int move_and_rename(char *source_path, char *dst_dir, char *code) {
     strcat(filename, code); // adds the code
     strcat(filename, ".txt"); // adds the extension
 
-
-   // Create the full path to the destination file by concatenating the directory and filename
-   strcat(dst_dir, filename);
+    // Create the full path to the destination file by concatenating the directory and filename
+    strcat(dst_dir, filename);
 
     // use the rename function to move the file
     int result = rename(source_path, dst_dir);
@@ -306,10 +285,317 @@ int move_and_rename(char *source_path, char *dst_dir, char *code) {
     return 0;
 }
 
+int quit_game(char *command, char *response) {
+
+    FILE *fp;
+    char *line = NULL;
+    size_t len = 0;
+    ssize_t read;
+
+    // extracts the PLID from the command
+    command = strtok(NULL, " ");
+    command[strlen(command) - 1] = '\0';
+    char *plid = command;
+
+    // builds the file path
+    char filepath[26 + 1] = "GAMES/game_";
+    strcat(filepath, plid);
+    strcat(filepath, ".txt");
+
+    // checks if the player has any ongoing game with atleast one move.
+    // if he does, then remove the file and send a response.
+    if (access(filepath, F_OK) == 0){
+
+        // Creates the variables to call `move_and_rename()`
+        char *folderpath = (char *) malloc(sizeof(char) * (6 + 15 + 1));
+        if (folderpath == NULL) {
+            return -1;
+        }
+        strcpy(folderpath, "GAMES/");
+        strcat(folderpath, plid);
+        strcat(folderpath, "/");
+
+        // Move the file to the `GAMES/PLID` folder
+        move_and_rename(filepath, folderpath, "Q");
+        //free(folderpath); TODO: Queixa-se que o free está a ser feito em memória não alocada
+
+        // Removes the `curr_word_PLID.txt` file
+        strcpy(filepath, "GAMES/curr_word_");
+        strcat(filepath, plid);
+        strcat(filepath, ".txt");
+        remove(filepath);
+
+        strcpy(response, "RQT OK\n");
+        return 0;
+    }
+    else if (access(filepath, F_OK) == -1) {
+        strcpy(response, "RQT NOK\n");
+        return 1;
+    }
+    else{
+        strcpy(response, "RQT ERR\n");
+        return 1;
+    }
+}
+
+
+
+int play_letter(char *command, char *response) {
+    FILE *fp;
+    char *line = NULL;
+    char letter; // letter to be played
+    char letter_read; // letter read from the file
+    char word_read[30+1]; // word read from the file
+    char plid[6+1];
+    int positions[30]; // positions of the letter in the word
+    size_t len = 0;
+    int trial;
+    int trial_server;
+    char buffer_aux[2+1]; //max size of a trial + \0
+    char code;
+    char *curr_word = (char *) malloc(sizeof(char) * (30 + 1));
+    int i, nr_errors;
+    int *nr_letters_word = (int *) malloc(sizeof(int));
+    int *max_errors = (int *) malloc(sizeof(int));
+    ssize_t read;
+
+    // initializes the array with -1
+    memset(positions, -1, sizeof(positions));
+
+    // extracts the PLID, letter and trial from the command
+    command = strtok(NULL, " ");
+    strcpy(plid, command);
+
+    command = strtok(NULL, " ");
+    letter = command[0];
+
+    command = strtok(NULL, " ");
+    trial = atoi(command);
+
+    // builds the file path and the curr_game path
+    char filepath[26 + 1] = "GAMES/game_";
+    strcat(filepath, plid);
+    strcat(filepath, ".txt");
+
+    char curr_game_path[26 + 1] = "GAMES/curr_word_";
+    strcat(curr_game_path, plid);
+    strcat(curr_game_path, ".txt");
+
+    // opens the file. If it fails, it's because the player doesn't have an ongoing game, so returns an error
+    fp = fopen(filepath, "r");
+    if (fp == NULL) {
+        strcpy(response, "RLG ERR\n");  // TODO check if PLID and PWG syntax are valid
+        return -1;
+    }
+
+    // reads the first line of the file, which contains the word to be guessed as well as the number of errors
+    // copies them to the `word_read` and the `nr_erros` variable
+    read = getline(&line, &len, fp);
+    command = strtok(line, " ");
+    strcpy(word_read, command);
+    command = strtok(NULL, " ");
+    command = strtok(NULL, "\0");
+    command[strlen(command) - 1] = '\0';
+    nr_errors = atoi(command);
+
+    // gets the number of trials of the server, by reading the number of lines in the file
+    trial_server = get_nr_lines(filepath); // default + 1
+
+    // checks if the trial from the client is valid
+    if (trial != trial_server){
+        strcpy(response, "RLG INV ");
+        sprintf(buffer_aux, "%d", trial_server);
+        strcat(response, buffer_aux);
+        strcat(response, "\n");
+        return -1;
+    }
+
+    // checks for a duplicate letter
+    while (getline(&line, &len, fp) > 0){
+        // Checks for the code `T` (trial). If it's a trial, compares the letter to the one in the file
+        code = *line;
+        if (code == 'T'){
+
+            // Extracts the letter from the line
+            command = strtok(line, " ");
+            command = strtok(NULL, " ");
+            letter_read = command[0];
+
+            // If they are equal, then it's a duplicate letter
+            if (letter_read == letter){
+                strcpy(response, "RLG DUP ");
+                sprintf(buffer_aux, "%d", trial_server);
+                strcat(response, buffer_aux);
+                strcat(response, "\n");
+                return -1;
+            }
+        }
+    }
+    fclose(fp);
+
+    // Opens the file to append (register) the last play
+    fp = fopen(filepath, "a");
+    if (fp == NULL) {
+        return -1;
+    }
+    fprintf(fp, "T %c\n", letter);
+    if (fclose(fp) != 0) {
+        return -1;
+    }
+
+    // Open the curr_game_`plid`.txt file to read the current state of the word, and copies it to a buffer
+    fp = fopen(curr_game_path, "r");
+    if (fp == NULL) {
+        return -1;
+    }
+    read = getline(&line, &len, fp);
+    if (read == -1) {
+        return -1;
+    }
+    strcpy(curr_word, line);
+    fclose(fp);
+
+    int nr_letters = 0;
+    // Checks if the letter exists in the word
+    for (i = 0; i < strlen(word_read); i++){
+        if (word_read[i] == letter){
+            curr_word[i] = letter;
+            positions[nr_letters++] = i;
+       }
+    }
+
+    // If the letter doesn't exist in the word, then the response is `NOK`
+    if (nr_letters == 0){
+
+        // Checks for the number of errors
+        get_nr_letters_and_errors(word_read, nr_letters_word, max_errors);
+        if (nr_errors >= *max_errors) {
+            // Creates the variables to call `move_and_rename()`
+            char *folderpath = (char *) malloc(sizeof(char) * (6 + 15 + 1));
+            if (folderpath == NULL) {
+                return -1;
+            }
+            strcpy(folderpath, "GAMES/");
+            strcat(folderpath, plid);
+            strcat(folderpath, "/");
+
+
+            // Move the file to the `GAMES/PLID` folder
+            move_and_rename(filepath, folderpath, "F");
+
+            // Removes the `curr_word_PLID.txt` file
+            strcpy(filepath, "GAMES/curr_word_");
+            strcat(filepath, plid);
+            strcat(filepath, ".txt");
+            remove(filepath);
+
+            // Creates the response
+            strcpy(response, "RLG OVR ");
+            sprintf(buffer_aux, "%d", trial_server);
+            strcat(response, buffer_aux);
+            strcat(response, "\n");
+            return 0;
+        }
+
+        // There were still errors remaining, so increments the errors
+        // Opens the file to increment the number of errors
+        fp = fopen(filepath, "r+");  // Open the file for reading and writing
+        if (fp == NULL) {
+            return -1;
+        }
+
+        // Move the file pointer to the beginning of the file
+        if (fseek(fp, 0, SEEK_SET) != 0)
+            return -1;
+
+        // Read the first line of the file
+        char buffer[1024];
+        fgets(buffer, 1024, fp);
+        i = (int) strlen(buffer) - 1;
+        // Modify the contents of the buffer to contain the new first line of the file
+        while(buffer[i] != ' '){
+            i--;
+        }
+        i++; // i is now the position of the first digit of the number of errors
+        sprintf(buffer_aux, "%d", nr_errors + 1);
+        strcpy(buffer + i, buffer_aux);
+
+        // Seek back to the beginning of the file and write the modified buffer to the file
+        fseek(fp, 0, SEEK_SET);
+        fputs(buffer, fp);
+
+        fclose(fp);  // Close the file
+
+        // Creates the `NOK` response
+        strcpy(response, "RLG NOK ");
+        sprintf(buffer_aux, "%d", trial_server);
+        strcat(response, buffer_aux);
+        strcat(response, "\n");
+        return 0;
+    }
+
+    // Otherwise, the response is `OK`
+    // Save the buffer to the file
+    fp = fopen(curr_game_path, "w");
+    if (fp == NULL) {
+        return -1;
+    }
+    fprintf(fp, "%s", curr_word);
+    fclose(fp);
+
+    // Checks if there are no `-` in the word, which means that the word was guessed
+    if (strchr(curr_word, '-') == NULL){
+        // Creates the variables to call `move_and_rename()`
+        char *folderpath = (char *) malloc(sizeof(char) * (6 + 15 + 1));
+        if (folderpath == NULL) {
+            return -1;
+        }
+        strcpy(folderpath, "GAMES/");
+        strcat(folderpath, plid);
+        strcat(folderpath, "/");
+
+        // Move the file to the `GAMES/PLID` folder
+        move_and_rename(filepath, folderpath, "W");
+
+        // Removes the `curr_word_PLID.txt` file
+        strcpy(filepath, "GAMES/curr_word_");
+        strcat(filepath, plid);
+        strcat(filepath, ".txt");
+        remove(filepath);
+
+        // Creates the response
+        strcpy(response, "RLG WIN ");
+        sprintf(buffer_aux, "%d", trial_server);
+        strcat(response, buffer_aux);
+        strcat(response, "\n");
+        return 0;
+    }
+
+    // Create the dynamic response
+    strcpy(response, "RLG OK ");
+    sprintf(buffer_aux, "%d", trial_server);
+    strcat(response, buffer_aux);
+    strcat(response, " ");
+    sprintf(buffer_aux, "%d", nr_letters);
+    strcat(response, buffer_aux);
+    strcat(response, " ");
+    for (i = 0; i < nr_letters && positions[i] != -1; i++){
+        sprintf(buffer_aux, "%d", positions[i] + 1);
+        strcat(response, buffer_aux);
+        strcat(response, " ");
+    }
+    // Removes the last space
+    response[strlen(response) - 1] = '\0';
+    strcat(response, "\n");
+
+    return 0;
+}
+
+
 int guess_word(char *command, char *response) {
     FILE *fp;
     char *line = NULL;
-    char word[30+1];     // word read from the command 
+    char word[30+1];     // word read from the command
     char word_read[30+1]; // word read from the file
     char plid[6+1];
     size_t len = 0;
@@ -322,27 +608,24 @@ int guess_word(char *command, char *response) {
     int *nr_letters = (int *) malloc(sizeof(int));
     int *max_errors = (int *) malloc(sizeof(int));
     int nr_errors, i;
-    
 
-    // extracts the PLID from the command
+
+    // extracts the PLID, word and trial from the command
     command = strtok(NULL, " ");
     strcpy(plid, command);
 
-
-    // extracts the word from the command
     command = strtok(NULL, " ");
     strcpy(word, command);
 
-    
-    // extracts the word from the command
     command = strtok(NULL, " ");
     trial = atoi(command);
 
     // builds the file path
-    char filepath[6 + 15 + 1] = "GAMES/game_";
+    char filepath[26 + 1] = "GAMES/game_";
     strcat(filepath, plid);
     strcat(filepath, ".txt");
 
+    // opens the file. If it fails, it's because the player doesn't have an ongoing game, so returns an error
     fp = fopen(filepath, "r");
     if (fp == NULL) {
         strcpy(response, "RWG ERR\n");  // TODO check if PLID and PWG syntax are valid
@@ -366,15 +649,16 @@ int guess_word(char *command, char *response) {
         strcat(response, buffer_aux);
         strcat(response, "\n");
         return -1;
-    } 
+    }
 
     while (getline(&line, &len, fp) > 0){
-        code = *line; // reads the space
+        code = *line;
         if (code == 'G'){
             command = strtok(line, " ");
             command = strtok(NULL, " ");
-            printf("word_guessed: %s\n", word_guessed);
             strcpy(word_guessed, command);
+            word_guessed[strlen(word_guessed) - 1] = '\0';
+            printf("word_guessed: %s\n", word_guessed);
 
             if (strcmp(word, word_guessed) == 0){
                 strcpy(response, "RWG DUP ");
@@ -387,6 +671,18 @@ int guess_word(char *command, char *response) {
     }
     fclose(fp);
 
+    // Opens the file to append (register) the last play
+    fp = fopen(filepath, "a");
+    if (fp == NULL) {
+        return -1;
+    }
+    fprintf(fp, "G %s\n", word);
+
+    if (fclose(fp) != 0) {
+        return -1;
+    }
+
+    // Checks if the word is correct
     if (strcmp(word, word_read) == 0){
 
         // Creates the variables to call `move_and_rename()`
@@ -402,6 +698,12 @@ int guess_word(char *command, char *response) {
         // Move the file to the `GAMES/PLID` folder
         move_and_rename(filepath, folderpath, "W");
 
+        // Removes the `curr_word_PLID.txt` file
+        strcpy(filepath, "GAMES/curr_word_");
+        strcat(filepath, plid);
+        strcat(filepath, ".txt");
+        remove(filepath);
+
         // Creates the response
         strcpy(response, "RWG WIN ");
         sprintf(buffer_aux, "%d", trial_server);
@@ -409,65 +711,73 @@ int guess_word(char *command, char *response) {
         strcat(response, "\n");
         return 0;
     }
-    else {
-        get_nr_letters_and_errors(word_read, nr_letters, max_errors);
-        if (nr_errors >= *max_errors){
-            strcpy(response, "RWG OVR ");
-            sprintf(buffer_aux, "%d", trial_server);
-            strcat(response, buffer_aux);
-            strcat(response, "\n");
-            return 0;
-        }
 
-        fp = fopen(filepath, "a");
-        if (fp == NULL) {
+    // Checks for the number of errors
+    get_nr_letters_and_errors(word_read, nr_letters, max_errors);
+    if (nr_errors >= *max_errors) {
+        // Creates the variables to call `move_and_rename()`
+        char *folderpath = (char *) malloc(sizeof(char) * (6 + 15 + 1));
+        if (folderpath == NULL) {
             return -1;
         }
-        fprintf(fp, "G %s\n", word);
-        // close the file
-        if (fclose(fp) != 0) {
-            return -1;
-        }
+        strcpy(folderpath, "GAMES/");
+        strcat(folderpath, plid);
+        strcat(folderpath, "/");
 
-        
-        fp = fopen(filepath, "r+");  // Open the file for reading and writing
-        if (fp == NULL) {
-            return -1;
-        }
 
-        // Move the file pointer to the beginning of the file
-        if (fseek(fp, 0, SEEK_SET) != 0)
-            return -1;
-        
+        // Move the file to the `GAMES/PLID` folder
+        move_and_rename(filepath, folderpath, "F");
 
-        // Read the first line of the file
-        char buffer[1024];
-        fgets(buffer, 1024, fp);
-        i = strlen(buffer) - 1;
-        // Modify the contents of the buffer to contain the new first line of the file
-        while(buffer[i] != ' '){
-            i--;
-        }
-        i++; // i is now the position of the first digit of the number of errors
-        sprintf(buffer_aux, "%d", nr_errors + 1);
-        strcpy(buffer + i, buffer_aux);
+        // Removes the `curr_word_PLID.txt` file
+        strcpy(filepath, "GAMES/curr_word_");
+        strcat(filepath, plid);
+        strcat(filepath, ".txt");
+        remove(filepath);
 
-        // Seek back to the beginning of the file and write the modified buffer to the file
-        fseek(fp, 0, SEEK_SET);
-        fputs(buffer, fp);
-
-        fclose(fp);  // Close the file
-
-        strcpy(response, "RWG NOK ");
+        // Creates the response
+        strcpy(response, "RWG OVR ");
         sprintf(buffer_aux, "%d", trial_server);
         strcat(response, buffer_aux);
         strcat(response, "\n");
-        return 1;
+        return 0;
     }
-    
-    // checks if the player has any ongoing game with atleast one move.
-    // if he does, then remove the file and send a response.
-} 
+
+    // Opens the file to increment the number of errors
+    fp = fopen(filepath, "r+");  // Open the file for reading and writing
+    if (fp == NULL) {
+        return -1;
+    }
+
+    // Move the file pointer to the beginning of the file
+    if (fseek(fp, 0, SEEK_SET) != 0)
+        return -1;
+
+    // Read the first line of the file
+    char buffer[1024];
+    fgets(buffer, 1024, fp);
+    i = (int) strlen(buffer) - 1;
+    // Modify the contents of the buffer to contain the new first line of the file
+    while(buffer[i] != ' '){
+        i--;
+    }
+    i++; // i is now the position of the first digit of the number of errors
+    sprintf(buffer_aux, "%d", nr_errors + 1);
+    strcpy(buffer + i, buffer_aux);
+
+    // Seek back to the beginning of the file and write the modified buffer to the file
+    fseek(fp, 0, SEEK_SET);
+    fputs(buffer, fp);
+
+    fclose(fp);  // Close the file
+
+    // Creates and sends the response
+    strcpy(response, "RWG NOK ");
+    sprintf(buffer_aux, "%d", trial_server);
+    strcat(response, buffer_aux);
+    strcat(response, "\n");
+    return 1;
+
+}
 
 
 /* Recieves a command from the client and process it. Saves what is to be sent back to the client in `response` */
@@ -480,38 +790,21 @@ int process_client_message(char *command, char *response){
     if (strcmp(splitted, "SNG") == 0) {
         return start_game(command, response);
     }
-
-    // TODO implementar estas meninas
-    //    else if (strcmp(splitted, "PLG") == 0) {
-    //        return play_letter(command, response);
-    //    }
-    //
+    else if (strcmp(splitted, "PLG") == 0) {
+        return play_letter(command, response);
+    }
     else if (strcmp(splitted, "PWG") == 0) {
         return guess_word(command, response);
     }
-    //
-    //        else if (strcmp(splitted, "GSB") == 0) {
-    //            return get_scoreboard(command, response);
-    //        }
-    //
-    //    else if (strcmp(splitted, "GHL") == 0) {
-    //        return get_hint(command, response);
-    //    }
-    //
-    //    else if (strcmp(splitted, "STA") == 0) {
-    //        return get_state(command, response);
-    //    }
-    //
-        else if (strcmp(splitted, "QUT") == 0) {
-            return quit_game(command, response);
-        }
-    //
-    //
-    //    else {
-    //        TODO implementar um erro
-    //        strcpy(response, "ERR");
-    //        return -1;
-    //    }
+    else if (strcmp(splitted, "QUT") == 0) {
+        return quit_game(command, response);
+    }
+
+//    else {
+//        TODO implementar um erro
+//        strcpy(response, "ERR");
+//        return -1;
+//    }
 
     return 0;
 
@@ -670,7 +963,7 @@ int main(int argc, char *argv[]) {
     char *port = (char *) malloc(sizeof(char) * 6);
     time_t t;
     srand((unsigned) time(&t));
-    strcpy(port, "58011");
+    strcpy(port, "58031");
 
     res = processInput(argc, argv, port);
     if (res == -1) {

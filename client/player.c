@@ -637,7 +637,7 @@ int processInput(int argc, char *argv[], char *ip, char *port){
 int readCommand(int *cmdCode, char *cmd){
 
     int res;
-    char buffer[INPUT_SIZE]; // Creates a temporary buffer to read the command
+    char buffer[INPUT_SIZE]; // a temporary buffer to read the command
 
     // Reads the command
     res = scanf("%s", buffer);

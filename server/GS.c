@@ -13,7 +13,8 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include <fcntl.h>
-
+#include <dirent.h>
+#include <sys/signal.h>
 #define CHUNK_SIZE 1024
 #define min(a, b) (((a) < (b)) ? (a) : (b))
 
@@ -787,7 +788,181 @@ int read_chunk(char *buffer, int fd, int toRead){
     return n_read;
 }
 
-// TODO FAZER PARA QUANDO NÃO HÁ JOGO ATIVO -> FAZER ACCESS() PARA VER SE O FICHEIRO EXISTE; DIVIDIR EM FUNÇÕES
+
+// Finds the last game of a given plid and saves the the filepath in fname
+int FindLastGame(char *PLID, char *fname)
+{
+    struct dirent **filelist;
+    int n_entries, found;
+    char dirname[20];
+    sprintf(dirname, "GAMES/%s/", PLID);
+
+    n_entries = scandir(dirname, &filelist, 0, alphasort);
+    found = 0;
+    if (n_entries <= 0)
+        return (0);
+    else
+    {
+        while (n_entries--)
+        {
+            if (filelist[n_entries]->d_name[0] != '.')
+            {
+                sprintf(fname, "GAMES/%s/%s", PLID, filelist[n_entries]-> d_name);
+                found = 1;
+            }
+            free(filelist[n_entries]);
+            if (found)
+                break;
+        }
+        free(filelist);
+    }
+    return (found);
+}
+
+// processes the state command when there are no ongoing games
+int process_state_quit(char* plid, int fd){
+    char *filepath = (char*) malloc( sizeof(char) * (strlen("GAMES/099181/20221219_04:22:16_W.txt")+1) );
+    FILE *fp_game = NULL;
+    char *buffer = (char *) malloc(sizeof(char) * CHUNK_SIZE);
+    char *word = (char*) malloc(sizeof(char) * (30+1));
+    char *hint_name = (char*) malloc(sizeof(char) * (24+1));
+    char *line = NULL;
+    size_t len = 0;
+    int nr_lines;
+    char *response = (char *) malloc(sizeof(char) * CHUNK_SIZE);
+    int nread;
+
+    char *state_path = (char *) malloc(sizeof(char) * (22 + 1));
+    if (state_path == NULL) {
+        return -1;
+    }
+
+    strcpy(state_path, "GAMES/state_");
+    strcat(state_path, plid);
+    strcat(state_path, ".txt");
+
+
+    FILE *fp_state = fopen(state_path, "w");
+    if (fp_state== NULL) {
+        return -1;
+    }
+    nr_lines = get_nr_lines(state_path) -1; // -1 because of the header
+    fprintf(fp_state, "\tLast finalized game for player %s\n", plid);
+    strcpy(buffer, "\t--- Transactions found: ");
+    sprintf(buffer + strlen(buffer), "%d", nr_lines);
+    strcat(buffer, " ---\n");
+    fputs(buffer, fp_state);
+
+    // finds the last game of the player and saves the plid gamepath in filepath
+    if(FindLastGame(plid, filepath) == 0){
+        return -1;
+    }
+
+    // opens the file
+    fp_game = fopen(filepath, "r");
+    if(fp_game == NULL){
+        return -1;
+    }
+
+    // reads the first line of the file
+    fgets(buffer, 1024, fp_game);
+
+    // reads the word to guess
+    char *splitted = strtok(buffer, " ");
+    strcpy(word, splitted);
+
+
+    // reads the hint_name
+    splitted = strtok(NULL, " ");
+    strcpy(hint_name, splitted);
+
+    // writes the word and the hint_name to the state file
+    fprintf(fp_state, "\tWord: %s; Hint file: %s\n", word, hint_name);
+
+    // set the buffer to all 0s
+    memset(buffer, 0, CHUNK_SIZE);
+
+
+    while(getline(&line, &len, fp_game) != -1){
+    strcpy(buffer, "\t");
+    // If the first letter is T, writes "Letter trial: `letter`"
+    if(line[0] == 'T') {
+        strcat(buffer, "Letter trial: ");
+        char trial = line[2];
+        sprintf(buffer + strlen(buffer), "%c", trial);
+        strcat(buffer, " - ");
+        // If the letter is in the word, appends "TRUE". Otherwise, appends "FALSE"
+        if(strchr(word, line[2]) != NULL) {
+            strcat(buffer, "TRUE");
+        }
+        else {
+            strcat(buffer, "FALSE");
+        }
+        strcat(buffer, "\n");
+    }
+    else if (line[0] == 'G'){
+        strcat(buffer, "Word guess: ");
+        strcat(buffer, line + 2);
+    }
+    fputs(buffer, fp_state);
+    fclose(fp_game);
+
+    memset(buffer, 0, sizeof(char) * CHUNK_SIZE);
+
+    // Gets the file size
+    fseek(fp_state, 0L, SEEK_END);
+    int state_size = ftell(fp_state);
+    fclose(fp_state);
+
+    // Sends the output to the client
+    strcpy(response, "RST ACT ");
+    strcat(response, "state_");
+    strcat(response, plid);
+    strcat(response, ".txt ");
+    sprintf(buffer, "%d ", state_size);
+    strcat(response, buffer);
+
+    write(fd, response, strlen(response));
+
+    // appends to the response buffer the contents of the hint file in chuncks of 1024 bytes using write_chunk()
+    int toRead = state_size;
+
+    // opens the state file and associates it to a File Descriptor
+    int fd_state = open(state_path, O_RDONLY);
+    if (fd_state == -1) {
+        return -1;
+    }
+
+    // Reads the image from the server and saves it locally
+    while (toRead > 0) {
+        nread = read_chunk(buffer, fd_state, min(CHUNK_SIZE, toRead));
+        write(fd, buffer, nread);
+        toRead -= (int) nread;
+    }
+    // closes the file descriptor
+    close(fd_state);
+
+    return 0;
+
+    }
+
+
+
+
+
+
+
+
+
+
+
+    
+
+
+
+}
+
+// TODO: FAZER PARA QUANDO NÃO HÁ JOGO ATIVO -> FAZER ACCESS() PARA VER SE O FICHEIRO EXISTE; DIVIDIR EM FUNÇÕES
 int process_state(char *command, int fd){
 
     char *game_path = (char *) malloc(sizeof(char) * (19 + 1));
@@ -821,20 +996,28 @@ int process_state(char *command, int fd){
     if (output_path == NULL) {
         return -1;
     }
-    strcpy(output_path, "GAMES/state_");
-    strcat(output_path, plid);
-    strcat(output_path, ".txt");
-    FILE *fp_output = fopen(output_path, "w");
-    if (fp_output == NULL) {
-        return -1;
-    }
 
     // open the file `GAMES/game_PLID.txt` to extract the plays
     strcpy(game_path, "GAMES/game_");
     strcat(game_path, plid);
     strcat(game_path, ".txt");
+
+    // if the file doens't exist, go to function process_state_quit
+    if (access(game_path, F_OK) == -1) {
+        process_state_quit(plid, fd);
+        return 0;
+    }
+
     FILE *fp_game = fopen(game_path, "r");
     if (fp_game == NULL) {
+        return -1;
+    }
+
+    strcpy(output_path, "GAMES/state_");
+    strcat(output_path, plid);
+    strcat(output_path, ".txt");
+    FILE *fp_output = fopen(output_path, "w");
+    if (fp_output == NULL) {
         return -1;
     }
 
@@ -1125,6 +1308,60 @@ int process_hint(char *command, int fd){
 
 }
 
+/* Finds the top scores in the SCORES directory and returns the number of scores found
+int FindTopScores(SCORELIST **list)
+{
+    struct dirent **filelist;
+    int n_entries, i_file;
+    char fname[50];
+    FILE **fp;
+    n_entries = scandir("SCORES/", &filelist, 0, alphasort);
+    i_file = 0;
+    if (n_entries < 0)
+    {
+        return (0);
+    }
+    else
+    {
+        while (n_entries--)
+        {
+            if (filelist[n_entries]->d_name[0] != '.')
+            {
+                sprintf(fname, "SCORES/%s", filelist[n_entries]->d_name);
+                fp = fopen(fname, "r");
+                if (fp != NULL)
+                {
+                    fscanf(fp, "%d%s%s%d%d",
+                        &list->score[i_file], list->PLID[i_file], list->word[i_file], &list->nsucc[i_file],
+                        &list->ntot[i_file]);
+                    fclose(fp);
+                    ++i_file;
+                }
+            }
+            free(filelist[n_entries]);
+            if (i_file == 10)
+                break;
+        }
+        free(filelist);
+    }
+    list->n_scores = i_file;
+    return (i_file);
+}
+*/
+
+
+int process_scoreboard(char *command, char* response){
+  /*criar uma estrutura deste género?
+  typedef struct {
+    char player_id[7];
+    int num_plays;  // number of plays required to win the game
+    char word[MAX_WORD_LEN+1];  // word that was guessed
+} Score;
+*/
+
+}
+
+
 
 
 
@@ -1151,15 +1388,16 @@ int process_client_message(char *command, char *response, int fd){
     }
 
     // TCP FUNCTIONS
-    // else if (strcmp(splitted, "GSB") == 0) {
-    //     return quit_game(command, response);
-    // }
+    else if (strcmp(splitted, "GSB") == 0) {
+        return process_scoreboard(command, fd);
+     }
     else if (strcmp(splitted, "GHL") == 0) {
         return process_hint(command, fd);     //TODO: criar abstração a enviar ficheiro
     }
     else if (strcmp(splitted, "STA") == 0) {
      return process_state(command, fd);
     }
+
 
 //    else {
 //        TODO: implementar um erro
@@ -1345,6 +1583,9 @@ int main(int argc, char *argv[]) {
         printUsage();
         return -1;
     }
+    signal(SIGCHLD, SIG_IGN);
+    signal(SIGPIPE, SIG_IGN);
+    // signal(SIGINT, SIG_IGN); // TRATAR O SIGINT (nao com ign)
 
     // Child process
     if (fork() == 0) {
@@ -1352,6 +1593,7 @@ int main(int argc, char *argv[]) {
     } else {
         process_messages_TCP(port);
     }
+    
 
     return 0;
 }

@@ -29,7 +29,6 @@
 "-`state` or `st`                  - recieves a summary of the state of the current game or the most recent game;\n"\
 "-`quit`                           - quits the current game;\n"\
 "-`exit`                           - quits the current game and exists the program.\n"
-#define WELCOME_STATE "This is the current state of your game:\n"
 #define SAVED_IMAGE "The image was saved successfuly!\nYou can find the image in the file %s\n"
 #define QUIT_ERROR "You can't quit because you don't have an ongoing game. Please start a new game by typing `start PLID`, where PLID is your student number.\n"
 #define QUIT_SUCCESSFUL "The game was quit successfuly!\n"
@@ -494,7 +493,7 @@ int send_message_tcp(char *ip, char* port, char* cmd) {
     char filename[24 + 1];
     char filepath[24 + 1 + 5 + 1] = "files/";
     char filesize_str[10 + 1];
-
+    memset(filename, 0, sizeof(filename));
 
     fd = socket(AF_INET, SOCK_STREAM, 0);
     if (fd == -1) {
@@ -834,7 +833,6 @@ int main(int argc, char *argv[]) {
                 break;
 
             case STATE:
-                printf(WELCOME_STATE);
                 send_message_tcp(ip, port, cmd);
                 break;
 

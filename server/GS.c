@@ -787,6 +787,243 @@ int read_chunk(char *buffer, int fd, int toRead){
     return n_read;
 }
 
+// TODO FAZER PARA QUANDO NÃO HÁ JOGO ATIVO -> FAZER ACCESS() PARA VER SE O FICHEIRO EXISTE; DIVIDIR EM FUNÇÕES
+int process_state(char *command, int fd){
+
+    char *game_path = (char *) malloc(sizeof(char) * (19 + 1));
+    memset(game_path, 0, sizeof(char) * (19 + 1));
+    char *curr_word_path = (char *) malloc(sizeof(char) * (24 + 1));
+    memset(curr_word_path, 0, sizeof(char) * (24 + 1));
+    char curr_word[30+1];
+    memset(curr_word, 0, sizeof(char) * (30 + 1));
+    char *buffer = (char *) malloc(sizeof(char) * CHUNK_SIZE);
+    memset(buffer, 0, sizeof(char) * CHUNK_SIZE);
+    char *response = (char *) malloc(sizeof(char) * CHUNK_SIZE);
+    memset(response, 0, sizeof(char) * CHUNK_SIZE);
+    int nr_lines = -1;
+    int nread;
+    char *line = NULL;
+    size_t len = 0;
+
+    // extracts the PLID
+    command = strtok(NULL, " ");
+    command[6] = '\0';
+
+    // saves PLID in a variable
+    char *plid = (char *) malloc(sizeof(char) * (6 + 1));
+    if (plid == NULL) {
+        return -1;
+    }
+    strcpy(plid, command);
+
+    // Opens a file to write the output of state, which will be then sent to the server
+    char *output_path = (char *) malloc(sizeof(char) * (22 + 1));
+    if (output_path == NULL) {
+        return -1;
+    }
+    strcpy(output_path, "GAMES/state_");
+    strcat(output_path, plid);
+    strcat(output_path, ".txt");
+    FILE *fp_output = fopen(output_path, "w");
+    if (fp_output == NULL) {
+        return -1;
+    }
+
+    // open the file `GAMES/game_PLID.txt` to extract the plays
+    strcpy(game_path, "GAMES/game_");
+    strcat(game_path, plid);
+    strcat(game_path, ".txt");
+    FILE *fp_game = fopen(game_path, "r");
+    if (fp_game == NULL) {
+        return -1;
+    }
+
+    // open `GAMES/curr_word_PLID.txt` to extract the current state of the word
+    strcpy(curr_word_path, "GAMES/curr_word_");
+    strcat(curr_word_path, plid);
+    strcat(curr_word_path, ".txt");
+    FILE *fp_curr_word = fopen(curr_word_path, "r");
+    if (fp_curr_word == NULL) {
+        return -1;
+    }
+    fgets(curr_word, 30, fp_curr_word);
+    fclose(fp_curr_word);
+
+    // count how many lines there are on the `GAMES/game_PLID.txt` file. They are the number of trials
+    nr_lines = get_nr_lines(game_path);
+
+    // ignores the first line of `GAMES/game_PLID.txt`
+    getline(&line, &len, fp_game);
+
+    // Creates the output and sends it line by line
+    strcpy(buffer, "This is the current state of your game:\n");
+    fputs(buffer, fp_output);
+
+    strcpy(buffer, "\tActive game found for player ");
+    strcat(buffer, plid);
+    strcat(buffer, "\n");
+    fputs(buffer, fp_output);
+
+    strcpy(buffer, "\t--- Transactions found: ");
+    sprintf(buffer + strlen(buffer), "%d", nr_lines);
+    strcat(buffer, " ---\n");
+    fputs(buffer, fp_output);
+
+    while(getline(&line, &len, fp_game) != -1){
+        strcpy(buffer, "\t");
+        // If the first letter is T, writes "Letter trial: `letter`"
+        if(line[0] == 'T') {
+            strcat(buffer, "Letter trial: ");
+            char trial = line[2];
+            sprintf(buffer + strlen(buffer), "%c", trial);
+            strcat(buffer, " - ");
+            // If the letter is in the word, appends "TRUE". Otherwise, appends "FALSE"
+            if(strchr(curr_word, line[2]) != NULL) {
+                strcat(buffer, "TRUE");
+            }
+            else {
+                strcat(buffer, "FALSE");
+            }
+            strcat(buffer, "\n");
+        }
+        else if (line[0] == 'G'){
+            strcat(buffer, "Word guess: ");
+            strcat(buffer, line + 2);
+        }
+        fputs(buffer, fp_output);
+    }
+    // Puts the current word in the output
+    strcpy(buffer, "\tSolved so far: ");
+    strcat(buffer, curr_word);
+    strcat(buffer, "\n");
+    fputs(buffer, fp_output);
+    memset(buffer, 0, sizeof(char) * CHUNK_SIZE);
+
+    // Gets the file size
+    fseek(fp_output, 0L, SEEK_END);
+    int state_size = ftell(fp_output);
+    fclose(fp_output);
+
+    // Sends the output to the client
+    strcpy(response, "RST ACT ");
+    strcat(response, "state_");
+    strcat(response, plid);
+    strcat(response, ".txt ");
+    sprintf(buffer, "%d ", state_size);
+    strcat(response, buffer);
+
+    write(fd, response, strlen(response));
+
+    // appends to the response buffer the contents of the hint file in chuncks of 1024 bytes using write_chunk()
+    int toRead = state_size;
+
+    // opens the state file and associates it to a File Descriptor
+    int fd_state = open(output_path, O_RDONLY);
+    if (fd_state == -1) {
+        return -1;
+    }
+
+    // Reads the image from the server and saves it locally
+    while (toRead > 0) {
+        nread = read_chunk(buffer, fd_state, min(CHUNK_SIZE, toRead));
+        write(fd, buffer, nread);
+        toRead -= (int) nread;
+    }
+    // closes the file descriptor
+    close(fd_state);
+
+    return 0;
+
+    // Escrever "Active game..."
+    // Escrever...
+    // Para cada linha do `GAMES...`, formatar melhor a letra
+    // Fazer um "Letra in Palavra" e fazer append à frente
+    // Meter um solved so far com a palavra do curr_word
+    // meter um \n
+
+    // free plid, fp_game
+
+
+//char *splitted = (char *) malloc(sizeof(char) * 1024);
+//
+//    // create the filepath GAMES/game_PLID.txt
+//    char *filepath = (char *) malloc(sizeof(char) * (20+1));
+//    if (filepath == NULL) {
+//        return -1;
+//    }
+//    strcpy(filepath, "GAMES/game_");
+//    strcat(filepath, plid);
+//    strcat(filepath, ".txt");
+//
+//    // open the file and read the second word from the first line and saves it in hint_name
+//    FILE *fp = fopen(filepath, "r");
+//    if (fp == NULL) { //TODO: N ESQUEÇER MUDAR
+//        // writes the error message to the client
+//        char *response = (char *) malloc(sizeof(char) * (strlen("RHL NOK\n") + 1));
+//        if (response == NULL) {
+//            return -1;
+//        }
+//        strcpy(response, "RHL NOK\n");
+//        write(fd, response, strlen(response));
+//        // TODO: remover, só para testes
+//        //  write(fd, response, strlen(response));
+//        free(response);
+//        return -1;
+//    }
+//    char buffer[1024];
+//    fgets(buffer, 1024, fp);
+//    fclose(fp);
+//    splitted = strtok(buffer, " ");
+//    splitted = strtok(NULL, " ");
+//    strcpy(hint_name, splitted);
+//    memset(buffer, 0, 1024);
+//    // create the full path (`HINTS/` + hint_name)
+//    strcpy(hint_path, "HINTS/");
+//    strcat(hint_path, hint_name);
+//
+//    // get the size of the file
+//    fp = fopen(hint_path, "r");
+//    if (fp == NULL){
+//        return -1;
+//    }
+
+//
+//    //writes the response to the client, containing "RHL OK ",the name of the hint file, the size of the hint file
+//    char *response = (char *) malloc(sizeof(char) * (strlen("RHL OK ") + strlen(hint_name) + 10 + 1));
+//    if (response == NULL) {
+//        return -1;
+//    }
+
+//
+//    strcat(response, buffer);
+//    strcat(response, " ");
+//
+//    // sends the response to the client
+//    write(fd, response, strlen(response));
+//
+//    // appends to the response buffer the contents of the hint file in chuncks of 1024 bytes using write_chunk()
+//    int toRead = hint_size;
+//
+//    // opens the hint file and associates it to a File Descriptor
+//    int fd_hint = open(hint_path, O_RDONLY);
+//    if (fd_hint == -1) {
+//        return -1;
+//    }
+//
+//    // Reads the image from the server and saves it locally
+//    while (toRead > 0) {
+//        nread = read_chunk(buffer, fd_hint, min(CHUNK_SIZE, toRead));
+//        write(fd, buffer, nread);
+//        toRead -= (int) nread;
+//    }
+//    // closes the file descriptor
+//    close(fd_hint);
+
+}
+
+
+
+
 int process_hint(char *command, int fd){
 
     // extracts the PLID
@@ -838,7 +1075,7 @@ int process_hint(char *command, int fd){
     splitted = strtok(buffer, " ");
     splitted = strtok(NULL, " ");
     strcpy(hint_name, splitted);
-
+    memset(buffer, 0, 1024);
     // create the full path (`HINTS/` + hint_name)
     strcpy(hint_path, "HINTS/");
     strcat(hint_path, hint_name);
@@ -861,7 +1098,9 @@ int process_hint(char *command, int fd){
     strcat(response, hint_name);
     strcat(response, " ");
     sprintf(buffer, "%d", hint_size);
+
     strcat(response, buffer);
+    strcat(response, " ");
 
     // sends the response to the client
     write(fd, response, strlen(response));
@@ -918,9 +1157,9 @@ int process_client_message(char *command, char *response, int fd){
     else if (strcmp(splitted, "GHL") == 0) {
         return process_hint(command, fd);     //TODO: criar abstração a enviar ficheiro
     }
-    // else if (strcmp(splitted, "STA") == 0) {
-    //     return quit_game(command, response);
-    // }
+    else if (strcmp(splitted, "STA") == 0) {
+     return process_state(command, fd);
+    }
 
 //    else {
 //        TODO: implementar um erro

@@ -705,6 +705,46 @@ int guess_word(char *command, char *response) {
         strcat(filepath, ".txt");
         remove(filepath);
 
+        // Create a file "SCORES/score_PLID_DDMMYYYY_HHMMSS.txt"
+        char *score_filepath = (char *) malloc(sizeof(char) * (37 + 1));
+        if (score_filepath == NULL) {
+            return -1;
+        }
+        strcpy(score_filepath, "SCORES/score_");
+        strcat(score_filepath, plid);
+        strcat(score_filepath, "_");
+        get_timestamp(score_filepath + strlen(score_filepath));
+        strcat(score_filepath, ".txt");
+
+        // Opens the file to write "score PLID word n_succ n_trials"
+        fp = fopen(score_filepath, "w");
+        if (fp == NULL) {
+            return -1;
+        }
+
+        char score_buffer[3+1];
+        int n_succ = trial_server - nr_errors;
+        int score = (n_succ / trial_server) * 100;
+        // convert score to string
+        sprintf(score_buffer, "%d", score);
+        // prepend 0s to score until it's exacly 3 digits
+        //char *aux = (char *) malloc(sizeof(char) * (3 + 1));
+        char aux[3+1];
+        while (strlen(score_buffer) < 3){
+            strcpy(aux, score_buffer);
+            strcpy(score_buffer, "0");
+            strcat(score_buffer, aux);
+            memset(aux, 0, strlen(aux));
+        }
+        // free(aux);
+        fprintf(fp, "%d %s %s %d %d",score, plid, word_read, n_succ, trial_server);
+
+        // Closes the file
+        if (fclose(fp) != 0) {
+            return -1;
+        }
+
+
         // Creates the response
         strcpy(response, "RWG WIN ");
         sprintf(buffer_aux, "%d", trial_server);
@@ -846,7 +886,6 @@ int process_state_quit(char* plid, int fd){
     if (fp_state== NULL) {
         return -1;
     }
-    nr_lines = get_nr_lines(state_path) -1; // -1 because of the header
     fprintf(fp_state, "\tLast finalized game for player %s\n", plid);
     strcpy(buffer, "\t--- Transactions found: ");
     sprintf(buffer + strlen(buffer), "%d", nr_lines);
@@ -858,6 +897,8 @@ int process_state_quit(char* plid, int fd){
         return -1;
     }
 
+    nr_lines = get_nr_lines(filepath) - 1; // -1 because of the header
+    
     // opens the file
     fp_game = fopen(filepath, "r");
     if(fp_game == NULL){
@@ -884,30 +925,39 @@ int process_state_quit(char* plid, int fd){
 
 
     while(getline(&line, &len, fp_game) != -1){
-    strcpy(buffer, "\t");
-    // If the first letter is T, writes "Letter trial: `letter`"
-    if(line[0] == 'T') {
-        strcat(buffer, "Letter trial: ");
-        char trial = line[2];
-        sprintf(buffer + strlen(buffer), "%c", trial);
-        strcat(buffer, " - ");
-        // If the letter is in the word, appends "TRUE". Otherwise, appends "FALSE"
-        if(strchr(word, line[2]) != NULL) {
-            strcat(buffer, "TRUE");
+        strcpy(buffer, "\t");
+        // If the first letter is T, writes "Letter trial: `letter`"
+        if(line[0] == 'T') {
+            strcat(buffer, "Letter trial: ");
+            char trial = line[2];
+            sprintf(buffer + strlen(buffer), "%c", trial);
+            strcat(buffer, " - ");
+            // If the letter is in the word, appends "TRUE". Otherwise, appends "FALSE"
+            if(strchr(word, line[2]) != NULL) {
+                strcat(buffer, "TRUE");
+            }
+            else {
+                strcat(buffer, "FALSE");
+            }
+            strcat(buffer, "\n");
         }
-        else {
-            strcat(buffer, "FALSE");
+        else if (line[0] == 'G'){
+            strcat(buffer, "Word guess: ");
+            strcat(buffer, line + 2);
         }
-        strcat(buffer, "\n");
+        fputs(buffer, fp_state);
     }
-    else if (line[0] == 'G'){
-        strcat(buffer, "Word guess: ");
-        strcat(buffer, line + 2);
-    }
-    fputs(buffer, fp_state);
-    fclose(fp_game);
+        fclose(fp_game);
 
     memset(buffer, 0, sizeof(char) * CHUNK_SIZE);
+/* 
+    // Use the stat function to get information about the file
+    struct stat file_stat;
+    if (stat(state_path, &file_stat) != 0) {
+        perror("Error getting file status");
+        return 1;
+    }
+    int state_size = file_stat.st_size; */
 
     // Gets the file size
     fseek(fp_state, 0L, SEEK_END);
@@ -933,7 +983,7 @@ int process_state_quit(char* plid, int fd){
         return -1;
     }
 
-    // Reads the image from the server and saves it locally
+    // Reads the file in chunks of 1024 bytes and writes it to the client
     while (toRead > 0) {
         nread = read_chunk(buffer, fd_state, min(CHUNK_SIZE, toRead));
         write(fd, buffer, nread);
@@ -944,23 +994,8 @@ int process_state_quit(char* plid, int fd){
 
     return 0;
 
-    }
-
-
-
-
-
-
-
-
-
-
-
-    
-
-
-
 }
+
 
 // TODO: FAZER PARA QUANDO NÃO HÁ JOGO ATIVO -> FAZER ACCESS() PARA VER SE O FICHEIRO EXISTE; DIVIDIR EM FUNÇÕES
 int process_state(char *command, int fd){
@@ -1116,92 +1151,7 @@ int process_state(char *command, int fd){
     close(fd_state);
 
     return 0;
-
-    // Escrever "Active game..."
-    // Escrever...
-    // Para cada linha do `GAMES...`, formatar melhor a letra
-    // Fazer um "Letra in Palavra" e fazer append à frente
-    // Meter um solved so far com a palavra do curr_word
-    // meter um \n
-
     // free plid, fp_game
-
-
-//char *splitted = (char *) malloc(sizeof(char) * 1024);
-//
-//    // create the filepath GAMES/game_PLID.txt
-//    char *filepath = (char *) malloc(sizeof(char) * (20+1));
-//    if (filepath == NULL) {
-//        return -1;
-//    }
-//    strcpy(filepath, "GAMES/game_");
-//    strcat(filepath, plid);
-//    strcat(filepath, ".txt");
-//
-//    // open the file and read the second word from the first line and saves it in hint_name
-//    FILE *fp = fopen(filepath, "r");
-//    if (fp == NULL) { //TODO: N ESQUEÇER MUDAR
-//        // writes the error message to the client
-//        char *response = (char *) malloc(sizeof(char) * (strlen("RHL NOK\n") + 1));
-//        if (response == NULL) {
-//            return -1;
-//        }
-//        strcpy(response, "RHL NOK\n");
-//        write(fd, response, strlen(response));
-//        // TODO: remover, só para testes
-//        //  write(fd, response, strlen(response));
-//        free(response);
-//        return -1;
-//    }
-//    char buffer[1024];
-//    fgets(buffer, 1024, fp);
-//    fclose(fp);
-//    splitted = strtok(buffer, " ");
-//    splitted = strtok(NULL, " ");
-//    strcpy(hint_name, splitted);
-//    memset(buffer, 0, 1024);
-//    // create the full path (`HINTS/` + hint_name)
-//    strcpy(hint_path, "HINTS/");
-//    strcat(hint_path, hint_name);
-//
-//    // get the size of the file
-//    fp = fopen(hint_path, "r");
-//    if (fp == NULL){
-//        return -1;
-//    }
-
-//
-//    //writes the response to the client, containing "RHL OK ",the name of the hint file, the size of the hint file
-//    char *response = (char *) malloc(sizeof(char) * (strlen("RHL OK ") + strlen(hint_name) + 10 + 1));
-//    if (response == NULL) {
-//        return -1;
-//    }
-
-//
-//    strcat(response, buffer);
-//    strcat(response, " ");
-//
-//    // sends the response to the client
-//    write(fd, response, strlen(response));
-//
-//    // appends to the response buffer the contents of the hint file in chuncks of 1024 bytes using write_chunk()
-//    int toRead = hint_size;
-//
-//    // opens the hint file and associates it to a File Descriptor
-//    int fd_hint = open(hint_path, O_RDONLY);
-//    if (fd_hint == -1) {
-//        return -1;
-//    }
-//
-//    // Reads the image from the server and saves it locally
-//    while (toRead > 0) {
-//        nread = read_chunk(buffer, fd_hint, min(CHUNK_SIZE, toRead));
-//        write(fd, buffer, nread);
-//        toRead -= (int) nread;
-//    }
-//    // closes the file descriptor
-//    close(fd_hint);
-
 }
 
 
@@ -1350,7 +1300,7 @@ int FindTopScores(SCORELIST **list)
 */
 
 
-int process_scoreboard(char *command, char* response){
+int process_scoreboard(char *command, int fd){
   /*criar uma estrutura deste género?
   typedef struct {
     char player_id[7];
@@ -1561,7 +1511,6 @@ int process_messages_TCP(char *port){
                 exit(14);
             }
     }
-
     freeaddrinfo(res);
     close(fd);
 
@@ -1589,9 +1538,9 @@ int main(int argc, char *argv[]) {
 
     // Child process
     if (fork() == 0) {
-        process_messages_UDP(port);
-    } else {
         process_messages_TCP(port);
+    } else {
+        process_messages_UDP(port);
     }
     
 
@@ -1600,5 +1549,6 @@ int main(int argc, char *argv[]) {
 
 /* TODO:
  * [ ] - Implementar o -v (verbose)
+ * FAZER MAKEFILE
  *
  * */

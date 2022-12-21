@@ -448,12 +448,15 @@ int read_word(char *buffer, int fd, int max_word_len){
     nleft=max_word_len; 
     ptr=buffer;
     while(nleft>0){
-        nread =read(fd,ptr,1);
+        nread = read(fd,ptr,1);
+        if (nread == -1){
+            return -1;
+        }
         if (*ptr == ' '){
             *ptr = '\0';
             break;
         }
-        else if(nread==-1)/*error*/exit(1);
+
         else if (nread == 0)
             break; // closed by peer
         nleft -= nread;
@@ -532,12 +535,12 @@ int send_message_tcp(char *ip, char* port, char* cmd) {
 
     n = read_word(cmd_code, fd, 3+1);
     if (strcmp(cmd_code, "RSB") != 0 && strcmp(cmd_code, "RHL") != 0 && strcmp(cmd_code, "RST") != 0) {
-        exit(1);
+        exit(420);
     }
     n = read_word(status, fd, 5+1);
-    if (strcmp(status, "ACT") != 0 && strcmp(status, "FIN") != 0 && strcmp(status, "NOK") != 0 &&
-        strcmp(status, "OK") != 0 && strcmp(status, "EMPTY") != 0) {
-        exit(1);
+    if (strcmp(status, "ACT") != 0 && strcmp(status, "FIN") != 0 && strcmp(status, "NOK\n") != 0 &&
+        strcmp(status, "OK") != 0 && strcmp(status, "EMPTY\n") != 0) {
+        exit(69);
     }
 
     if (strcmp(status, "EMPTY") == 0) {
@@ -883,6 +886,7 @@ int main(int argc, char *argv[]) {
  * - Funções chamadas dentro de um while. ser -1, passam para próximo pedido
  *
  * */
+// TODO: guardar os ficheiros todos de TCP
 // TODO: Somoes bué fixes
 // TODO: Ver mallocs e frees todos
 // TODO: primeiro QUIT não envia o PLID para o servidor

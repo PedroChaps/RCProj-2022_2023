@@ -790,16 +790,23 @@ int read_chunk(char *buffer, int fd, int toRead){
 int process_hint(char *command, int fd){
 
     // extracts the PLID
-    char *splitted = strtok(command, " ");
-    splitted = strtok(NULL, " ");
-    char *hint_name = (char *) malloc(sizeof(char) * (24+ 1));
+    command = strtok(NULL, " ");
+    command[6] = '\0';
+    char *hint_name = (char *) malloc(sizeof(char) * (24 + 1));
+    char *hint_path = (char *) malloc(sizeof(char) * (30 + 1));
     int nread;
-
-    char *plid = (char *) malloc(sizeof(char) * (strlen(splitted) + 1));
+    char *splitted = (char *) malloc(sizeof(char) * 1024);
+    char *plid = (char *) malloc(sizeof(char) * (6 + 1));
     if (plid == NULL) {
         return -1;
     }
-    strcpy(plid, splitted);
+    strcpy(plid, command);
+
+
+//    // extracts the PLID from the command
+//    command = strtok(NULL, " ");
+//    command[strlen(command) - 1] = '\0';
+//    char *plid = command;
 
     // create the filepath GAMES/game_PLID.txt
     char *filepath = (char *) malloc(sizeof(char) * (20+1));
@@ -812,7 +819,7 @@ int process_hint(char *command, int fd){
 
     // open the file and read the second word from the first line and saves it in hint_name
     FILE *fp = fopen(filepath, "r");
-    if (fp == NULL) {
+    if (fp == NULL) { //TODO: N ESQUEÇER MUDAR
         // writes the error message to the client
         char *response = (char *) malloc(sizeof(char) * (strlen("RHL NOK\n") + 1));
         if (response == NULL) {
@@ -820,6 +827,8 @@ int process_hint(char *command, int fd){
         }
         strcpy(response, "RHL NOK\n");
         write(fd, response, strlen(response));
+        // TODO: remover, só para testes
+        //  write(fd, response, strlen(response));
         free(response);
         return -1;
     }
@@ -830,10 +839,18 @@ int process_hint(char *command, int fd){
     splitted = strtok(NULL, " ");
     strcpy(hint_name, splitted);
 
-    // saves the size of the hint_name file in hint_size
-    struct stat st;
-    stat(hint_name, &st);
-    int hint_size = st.st_size;
+    // create the full path (`HINTS/` + hint_name)
+    strcpy(hint_path, "HINTS/");
+    strcat(hint_path, hint_name);
+
+    // get the size of the file
+    fp = fopen(hint_path, "r");
+    if (fp == NULL){
+        return -1;
+    }
+    fseek(fp, 0L, SEEK_END);
+    int hint_size = ftell(fp);
+    fclose(fp);
 
     //writes the response to the client, containing "RHL OK ",the name of the hint file, the size of the hint file
     char *response = (char *) malloc(sizeof(char) * (strlen("RHL OK ") + strlen(hint_name) + 10 + 1));
@@ -853,20 +870,19 @@ int process_hint(char *command, int fd){
     int toRead = hint_size;
 
     // opens the hint file and associates it to a File Descriptor
-    int fd_hint = open(hint_name, O_RDONLY);
+    int fd_hint = open(hint_path, O_RDONLY);
     if (fd_hint == -1) {
         return -1;
     }
 
     // Reads the image from the server and saves it locally
     while (toRead > 0) {
-        nread = read_chunk(buffer, fd, min(CHUNK_SIZE, toRead));
+        nread = read_chunk(buffer, fd_hint, min(CHUNK_SIZE, toRead));
         write(fd, buffer, nread);
         toRead -= (int) nread;
     }
     // closes the file descriptor
     close(fd_hint);
-    close(fd);
 
 }
 
@@ -938,14 +954,14 @@ int process_messages_UDP(char *port){
 
     errcode = getaddrinfo(NULL, port, &hints, &res);
     if (errcode != 0) {
-        exit(1);
+        exit(2);
     }
 
     n = bind(fd, res->ai_addr, res->ai_addrlen);
     if (n == -1) {
         printf("%d", errno);
         printf("%s\n", strerror(errno));
-        exit(1);
+        exit(3);
     }
 
     while (1) {
@@ -953,11 +969,11 @@ int process_messages_UDP(char *port){
         addrlen = sizeof(addr);
         n = recvfrom(fd, buffer, 128, 0, (struct sockaddr *)&addr, &addrlen);
         if (n == -1) {
-            exit(1);
+            exit(4);
         }
 
         // FIXME Debug message, remove later
-        write(1, "DEBUG: ", 6);
+        write(1, "DEBUG_UDP: ", 9);
         write(1, buffer, n);
 
         // Processes the message recieved
@@ -967,7 +983,7 @@ int process_messages_UDP(char *port){
         // Sends the response to the client. The maximum size is CHUNK_SIZE
         n = sendto(fd, response, strlen(response), 0, (struct sockaddr *)&addr, addrlen);
         if (n == -1) {
-            exit(1);
+            exit(5);
         }
 
         // Resets the memory of `response` and 'command'
@@ -1000,7 +1016,7 @@ int process_messages_TCP(char *port){
 
     fd = socket(AF_INET, SOCK_STREAM, 0);
     if (fd == -1) {
-        exit(1);
+        exit(6);
     }
 
     memset(&hints, 0, sizeof hints);
@@ -1010,16 +1026,18 @@ int process_messages_TCP(char *port){
 
     errcode = getaddrinfo(NULL, port, &hints, &res);
     if ((errcode) != 0) {
-        exit(1);
+        exit(7);
     }
 
     n = bind(fd, res->ai_addr, res->ai_addrlen);
     if (n == -1) {
-        exit(1);
+        printf("%d\n", errno);
+        printf(" %s\n", strerror(errno));
+        exit(8);
     }
 
     if (listen(fd, 5) == -1) { // TODO perguntar quantas conexões podem estar pendentes
-        exit(1);
+        exit(9);
     }
 
     /* Loop para processar uma socket de cada vez */
@@ -1031,38 +1049,40 @@ int process_messages_TCP(char *port){
         if (newfd == -1 && errno == EINTR) {
             printf("%d", errno);
             printf(" %s\n", strerror(errno));
-            exit(1);
+            exit(10);
         }
 
         // fork a new process to handle the new connection
         if ((pid = fork()) == -1)
-            exit(1);
+            exit(11);
 
-        // child process
-        else if (pid == 0) {
+        // parent process
+        else if (pid > 0) {
             close(fd);
             while ((n = read(newfd, buffer, 128)) != 0) {
+                // FIXME Debug message, remove later
+                write(1, "DEBUG_TCP: ", 9);
+                write(1, buffer, n);
+
                 if (n == -1) /*error*/
-                    exit(1);
+                    exit(12);
                 // Processes the message recieved
                 process_client_message(buffer, chunk, newfd);
-                while (n > 0) {
-                    if ((nw = write(newfd, ptr, n)) <= 0) /*error*/
-                        exit(1);
-                    n -= nw;
-                    ptr += nw;
-                }
+
             }
             close(newfd);
             exit(0);
         }
 
-        // parent process - closes the new socket and waits for another connection
-        do {
-            ret = close(newfd);
-        } while (ret == -1 && errno == EINTR);
-        if (ret == -1)
-            exit(1);
+        // child process
+        else if (pid == 0) {
+            // closes the new socket and waits for another connection
+            do {
+                ret = close(newfd);
+            } while (ret == -1 && errno == EINTR);
+            if (ret == -1)
+                exit(14);
+            }
     }
 
     freeaddrinfo(res);

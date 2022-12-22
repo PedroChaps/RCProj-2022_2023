@@ -2,7 +2,7 @@
 
 This is the project submission of the group 31, in the RC class of the academic year 2022-2023.  
 
-99181 - Tony Afonso  
+99181 - António Afonso  
 99298 - Pedro Chaparro
 
 ## Structure
@@ -64,7 +64,7 @@ The makefile has multiple targets:
 - `make player` - Compiles `player.c`, to the output file `player`;
 - `make server` - Compiles `server.c`, to the output file `GS`.
 
-To run the server, open the directory `server/` and run `./GS word_file [-p GSport] [-v]`. 
+To run the server, open the directory `server/` and run `./GS word_file [-p GSport] [-v]`.  
 By default, if no port is passed, the server will run in the port 58031 (58000 + GN).  
 
 To run the client, open the directory `client/` and run `./player [-n GSIP] [-p GSport]`.  

@@ -17,6 +17,8 @@
 #include <sys/signal.h>
 #define CHUNK_SIZE 1024
 #define min(a, b) (((a) < (b)) ? (a) : (b))
+#define DELAY_TCP "The message is taking a bit longer than expected. :/\nPlease wait a moment!\n"
+
 
 
 extern int errno;
@@ -102,11 +104,11 @@ int start_game(char *command, char *response){
     command = strtok(NULL, " ");
     command[strlen(command) - 1] = '\0';
     char *plid = command;
-
     // builds the file path
     char filepath[6 + 15 + 1] = "GAMES/game_";
     strcat(filepath, plid);
     strcat(filepath, ".txt");
+
 
     // checks if the player has any ongoing game with atleast one move.
     // if he does, then he cannot start a new game.
@@ -601,6 +603,9 @@ int write_top_scores(char *writepath) {
     FILE *fp_sb, *fp;
 
     n_entries = scandir("SCORES/", &filelist, 0, alphasort);
+    if (n_entries <= 2) {
+        return -1;
+    }
     // open the file to write the top scores
     fp_sb = fopen(writepath, "w");
     if (fp_sb == NULL) {
@@ -723,7 +728,6 @@ int guess_word(char *command, char *response) {
             command = strtok(NULL, " ");
             strcpy(word_guessed, command);
             word_guessed[strlen(word_guessed) - 1] = '\0';
-            printf("word_guessed: %s\n", word_guessed);
 
             if (strcmp(word, word_guessed) == 0){
                 strcpy(response, "RWG DUP ");
@@ -1071,7 +1075,6 @@ int process_state_quit(char* plid, int fd){
 }
 
 
-// TODO: FAZER PARA QUANDO NÃO HÁ JOGO ATIVO -> FAZER ACCESS() PARA VER SE O FICHEIRO EXISTE; DIVIDIR EM FUNÇÕES
 int process_state(char *command, int fd){
 
     char *game_path = (char *) malloc(sizeof(char) * (19 + 1));
@@ -1228,14 +1231,8 @@ int process_state(char *command, int fd){
     // free plid, fp_game
 }
 
-
-
-
 int process_hint(char *command, int fd){
 
-    // extracts the PLID
-    command = strtok(NULL, " ");
-    command[6] = '\0';
     char *hint_name = (char *) malloc(sizeof(char) * (24 + 1));
     char *hint_path = (char *) malloc(sizeof(char) * (30 + 1));
     int nread;
@@ -1247,10 +1244,9 @@ int process_hint(char *command, int fd){
     strcpy(plid, command);
 
 
-//    // extracts the PLID from the command
-//    command = strtok(NULL, " ");
-//    command[strlen(command) - 1] = '\0';
-//    char *plid = command;
+    // extracts the PLID
+    command = strtok(NULL, " ");
+    command[6] = '\0';
 
     // create the filepath GAMES/game_PLID.txt
     char *filepath = (char *) malloc(sizeof(char) * (20+1));
@@ -1258,7 +1254,7 @@ int process_hint(char *command, int fd){
         return -1;
     }
     strcpy(filepath, "GAMES/game_");
-    strcat(filepath, plid);
+    strcat(filepath, command);
     strcat(filepath, ".txt");
 
     // open the file and read the second word from the first line and saves it in hint_name
@@ -1349,15 +1345,15 @@ int process_scoreboard(char *command, int fd){
     if (response == NULL) {
         return -1;
     }
-
+ 
     // Calls the function to compute the new scoreboard. If there are no entries, sends a response with "RSB EMPTY".
     nr_entries = write_top_scores(sb_path);
-    if (nr_entries == 0) {
+    if (nr_entries == -1) {
         strcpy(response, "RHL EMPTY\n");
         // sends the response to the client
         write(fd, response, strlen(response));
     }
-
+ 
     // get the size of the file
     FILE* fp = fopen(sb_path, "r");
     if (fp == NULL){
@@ -1378,7 +1374,7 @@ int process_scoreboard(char *command, int fd){
     sprintf(buffer, "%d ", sb_size);
     strcat(response, buffer);
 
-    // sends the response to the client
+  // sends the response to the client
     write(fd, response, strlen(response));
 
     // opens the scoreboard file and associates it to a File Descriptor
@@ -1399,9 +1395,6 @@ int process_scoreboard(char *command, int fd){
 
     free(sb_path);
 }
-
-
-
 
 
 /* Recieves a command from the client and process it. Saves what is to be sent back to the client in `response` */
@@ -1483,14 +1476,16 @@ int process_messages_UDP(char *port){
     while (1) {
         // Recieves a message from the client
         addrlen = sizeof(addr);
+
         n = recvfrom(fd, buffer, 128, 0, (struct sockaddr *)&addr, &addrlen);
         if (n == -1) {
             exit(4);
         }
 
-        // FIXME Debug message, remove later
-        write(1, "DEBUG_UDP: ", 9);
-        write(1, buffer, n);
+		// Verbose mode
+		if (v == 1){
+		printf("VERBOSE_MODE:\n->The player from port %s has requested a: %s\n", port, buffer);
+		}
 
         // Processes the message recieved
         process_client_message(buffer, response, -1);
@@ -1499,7 +1494,7 @@ int process_messages_UDP(char *port){
         // Sends the response to the client. The maximum size is CHUNK_SIZE
         n = sendto(fd, response, strlen(response), 0, (struct sockaddr *)&addr, addrlen);
         if (n == -1) {
-            exit(5);
+           exit(5);
         }
 
         // Resets the memory of `response` and 'command'
@@ -1540,6 +1535,11 @@ int process_messages_TCP(char *port){
     hints.ai_socktype = SOCK_STREAM;
     hints.ai_flags = AI_PASSIVE;
 
+	if(setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &(int){ 1 }, sizeof(int)) < 0){
+		printf("%s\n", strerror(errno));
+		exit(1);
+	}
+
     errcode = getaddrinfo(NULL, port, &hints, &res);
     if ((errcode) != 0) {
         exit(7);
@@ -1561,12 +1561,23 @@ int process_messages_TCP(char *port){
 
         socklen_t addrlen = sizeof(addr);
         // wait for a new connection
+
+
         newfd = accept(fd, (struct sockaddr *) &addr, &addrlen);
         if (newfd == -1 && errno == EINTR) {
             printf("%d", errno);
             printf(" %s\n", strerror(errno));
             exit(10);
         }
+
+		// create a timeout for the accept
+		struct timeval tv;
+		tv.tv_sec = 5;
+		tv.tv_usec = 0;
+		if (setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv, sizeof tv)){
+			perror("setsockopt");
+			return -1;
+		}
 
         // fork a new process to handle the new connection
         if ((pid = fork()) == -1)
@@ -1576,9 +1587,11 @@ int process_messages_TCP(char *port){
         else if (pid > 0) {
             close(fd);
             while ((n = read(newfd, buffer, 128)) != 0) {
-                // FIXME Debug message, remove later
-                write(1, "DEBUG_TCP: ", 9);
-                write(1, buffer, n);
+
+				// Verbose mode
+				if (v == 1){
+				printf("VERBOSE_MODE:\n->The player from port %s has requested a: %s\n", port, buffer);
+				}
 
                 if (n == -1) /*error*/
                     exit(12);
@@ -1623,7 +1636,6 @@ int main(int argc, char *argv[]) {
     }
     signal(SIGCHLD, SIG_IGN);
     signal(SIGPIPE, SIG_IGN);
-    // signal(SIGINT, SIG_IGN); // TRATAR O SIGINT (nao com ign)
 
     // Creates the initial directories, if they are not created yet
     struct stat st;
@@ -1641,15 +1653,15 @@ int main(int argc, char *argv[]) {
     if (fork() == 0) {
         process_messages_UDP(port);
     } else {
-        process_messages_TCP(port);
+        if (process_messages_TCP(port) == -1){
+			printf(DELAY_TCP);
+			exit(1);
+		}
+		exit(0);
     }
-
     return 0;
 }
-
+						
 /* TODO:
- * [ ] - Implementar o -v (verbose)
- * [ ] - FAZER MAKEFILE
- * [ ] - Relatório maybe?
  * [ ] - Autoavaliação
  * */

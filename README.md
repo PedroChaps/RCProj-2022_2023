@@ -72,5 +72,3 @@ By default,
 
 ## Notes
 - After the client process starts (`./client`), commands that use the player ID will fail, because the command `start PLID` needs to be called first to set a player ID.
-
-<!-- TODO meter cena do Quit -->

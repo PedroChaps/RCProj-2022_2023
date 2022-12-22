@@ -43,6 +43,8 @@
 #define GUESS_DUP "You have already tried to guess that word. Try another one!\n"
 #define GUESS_WIN "Wow, you guessed the correct word! Congratulations!\n"
 #define START_ANOTHER_GAME "If you want to a start a new game, type `start PLID`, where PLID is your student number, or `exit` the program.\n"
+#define REPEAT_COMMAND "There was ab error sending the message to server! :/\nPlease try again...\n"
+#define UNKNOWN_COMMAND "That command is not available in your region. Please use the available commands that I showed you! >:( .\n"
 /* --------------------------------------------------------------------------------------------------- */
 
 #define ERROR (-1)
@@ -56,7 +58,7 @@
 #define EXIT 8
 #define INPUT_SIZE 31
 #define CHUNK_SIZE 1024
-#define REV 9 // FIXME remover mais tarde
+#define REV 9
 
 #define PROCESS_NOK (-3)
 #define PROCESS_EMPTY (-4)
@@ -90,8 +92,6 @@ void print_current_word(game *game){
         printf("You still have %d errors left (%d/%d).\n", (game->max_errors - game->curr_errors), game->curr_errors, game->max_errors);
     }
 }
-
-// TODO Quando começo um cliente e o servidor ainda está com um jogo ativo, tenho que confiar nas trials que ele me dá
 
 /* Initializes some variables of the current game and informs the user */
 int process_start(game *current_game, char *response){
@@ -250,7 +250,7 @@ int process_play(game* current_game, char* response, char* cmd){
     // Separates the trial
     splitted = strtok(NULL, " ");
 
-    trial = atoi(splitted); // TODO: Check if the trial matches. If it doesn't, a packet was lost somewhere
+    trial = atoi(splitted);
 
     // Besides OK, all the other status end it's processing here, because they don't have more information
     if (strcmp(status, "OK") != 0) {
@@ -273,8 +273,12 @@ int process_play(game* current_game, char* response, char* cmd){
             return 0;
         }
 
-        else if (strcmp(status, "INV") == 0)
+        // If the status is "INV", there was a problem in message - either the client or the server didn't receive the
+        // message. To synchronize them, assumes the server is the source of truth and assumes it's trial number
+        else if (strcmp(status, "INV") == 0) {
+            trials = trial;
             printf(PLAY_INV);
+        }
 
         else if (strcmp(status, "ERR\n") == 0)
             printf(PLAY_ERR);
@@ -287,6 +291,7 @@ int process_play(game* current_game, char* response, char* cmd){
 
         return 0;
     }
+
     // Separates the n
     splitted = strtok(NULL, " ");
 
@@ -347,7 +352,7 @@ int process_guess(game* current_game, char* response, char* cmd){
     // Separates the trial
     splitted = strtok(NULL, " ");
 
-    trial = atoi(splitted); // TODO: Check if the trial matches. If it doesn't, a packet was lost somewhere
+    trial = atoi(splitted);
 
     // Besides OK, all the other status end it's processing here,
     // because they don't have more information
@@ -371,14 +376,18 @@ int process_guess(game* current_game, char* response, char* cmd){
             return 0;
     }
 
-    else if (strcmp(status, "INV") == 0)
+    // If the status is "INV", there was a problem in message - either the client or the server didn't receive the
+    // message. To synchronize them, assumes the server is the source of truth and assumes it's trial number
+    else if (strcmp(status, "INV") == 0) {
+        trials = trial;
         printf(PLAY_INV);
+    }
 
     else if (strcmp(status, "ERR\n") == 0)
         printf(PLAY_ERR);
 
     // Increases the trials if it wasn't a DUP or ERR
-    if (strcmp(status, "DUP") != 0 && strcmp(status, "ERR\n") != 0 && strcmp(status, "INV") != 0) //TODO maybe o INV também não incrementa os trials?
+    if (strcmp(status, "DUP") != 0 && strcmp(status, "ERR\n") != 0 && strcmp(status, "INV") != 0)
         trials++;
 
     print_current_word(current_game);
@@ -422,10 +431,6 @@ int send_message_udp(char *ip, char* port, char* cmd, char* buffer) {
     if (n == -1) {
         return -1;
     }
-
-    // FIXME debug message, remove later
-    write(1, "DEBUG: ", 6);
-    write(1, buffer, n);
 
     freeaddrinfo(res);
     close(fd);
@@ -506,40 +511,29 @@ int send_message_tcp(char *ip, char* port, char* cmd) {
 
     errcode = getaddrinfo(ip, port, &hints, &res);
     if (errcode != 0) {
-        exit(1);
+        return -1;
     }
-
 
     do {
         n = connect(fd, res->ai_addr, res->ai_addrlen);
     } while (n == -1 && errno == EINTR);
     if (n == -1) {
-        exit(1);
+        return -1;
     }
-
-
 
     n=write(fd, cmd, strlen(cmd));
     if (n == -1) {
-        exit(1);
+        return -1;
     }
-
-    /*
-        n=read(fd, buffer, CHUNK_SIZE);
-        if (n == -1) {
-            exit(1);
-        }
-
-    */
 
     n = read_word(cmd_code, fd, 3+1);
     if (strcmp(cmd_code, "RSB") != 0 && strcmp(cmd_code, "RHL") != 0 && strcmp(cmd_code, "RST") != 0) {
-        exit(420);
+        return -1;
     }
     n = read_word(status, fd, 5+1);
     if (strcmp(status, "ACT") != 0 && strcmp(status, "FIN") != 0 && strcmp(status, "NOK\n") != 0 &&
         strcmp(status, "OK") != 0 && strcmp(status, "EMPTY\n") != 0) {
-        exit(69);
+        return -1;
     }
 
     if (strcmp(status, "EMPTY") == 0) {
@@ -553,12 +547,12 @@ int send_message_tcp(char *ip, char* port, char* cmd) {
     // A file is read from the server, so we need to read the file name and then the file size, using the function read_word
     n = read_word(filename, fd, 24+1);
     if (n == -1) {
-        exit(1);
+        return -1;
     }
 
     n = read_word(filesize_str, fd, 10+1);
     if (n == -1) {
-        exit(1);
+        return -1;
     }
 
     filesize = atoi(filesize_str);
@@ -566,46 +560,72 @@ int send_message_tcp(char *ip, char* port, char* cmd) {
     // We know that the file has the name filename and the size filesize, so we can create a file with that name and size
     // If the cmd_code is RHL, we need to create a file with the name filename and the size filesize. Otherwise, we keep the information in a buffer. We should use fopen to open the file
     // and fwrite to write the file. We should use the function read_word to read the file from the server.
+
+    strcat(filepath, filename);
+    int fd_file = open(filepath, O_RDWR | O_CREAT, 0666);
+    if (fd_file == -1) {
+        return -1;
+    }
+
+    int toRead = filesize;
+
+    // Reads the file from the server and saves it locally
+    while (toRead > 0) {
+        nread = read_chunk(buffer, fd, min(CHUNK_SIZE, toRead));
+        write(fd_file, buffer, nread);
+        toRead -= (int) nread;
+    }
+    close(fd_file);
+    // If it's a hint, tells the user that it has been saved.
     if (strcmp(cmd_code, "RHL") == 0) {
-
-        strcat(filepath, filename);
-        int fd_img = open(filepath, O_RDWR | O_CREAT, 0666);
-        if (fd_img == -1) {
-            exit(1);
-        }
-
-        int toRead = filesize;
-
-        // Reads the image from the server and saves it locally
-        while (toRead > 0) {
-            nread = read_chunk(buffer, fd, min(CHUNK_SIZE, toRead));
-            write(fd_img, buffer, nread);
-            toRead -= (int) nread;
-        }
-
         printf(SAVED_IMAGE, filepath);
     }
-    // Writes to the STDOUT
+    // Otherwise, it's a .txt file, so prints it to the terminal
     else {
-        int toRead = filesize;
-
-        //reads anything big enough from the server
-        while (toRead > 0) {
-            nread = read_chunk(buffer, fd, min(CHUNK_SIZE, toRead));
-            write(1, buffer, nread);
-            toRead -= (int) nread;
+        fd_file = open(filepath, O_RDONLY);
+        if (fd_file == -1) {
+            return -1;
+        }
+        while ((nread = read(fd_file, buffer, CHUNK_SIZE)) > 0) {
+            write(STDOUT_FILENO, buffer, nread);
         }
     }
 
+//    // We know that the file has the name filename and the size filesize, so we can create a file with that name and size
+//    // If the cmd_code is RHL, we need to create a file with the name filename and the size filesize. Otherwise, we keep the information in a buffer. We should use fopen to open the file
+//    // and fwrite to write the file. We should use the function read_word to read the file from the server.
+//    if (strcmp(cmd_code, "RHL") == 0) {
+//
+//        strcat(filepath, filename);
+//        int fd_file = open(filepath, O_RDWR | O_CREAT, 0666);
+//        if (fd_file == -1) {
+//            return -1;
+//        }
+//
+//        int toRead = filesize;
+//
+//        // Reads the image from the server and saves it locally
+//        while (toRead > 0) {
+//            nread = read_chunk(buffer, fd, min(CHUNK_SIZE, toRead));
+//            write(fd_file, buffer, nread);
+//            toRead -= (int) nread;
+//        }
+//
+//        printf(SAVED_IMAGE, filepath);
+//    }
+//    // Writes to the STDOUT
+//    else {
+//        int toRead = filesize;
+//
+//        //reads anything big enough from the server
+//        while (toRead > 0) {
+//            nread = read_chunk(buffer, fd, min(CHUNK_SIZE, toRead));
+//            write(1, buffer, nread);
+//            toRead -= (int) nread;
+//        }
+//    }
 
-    /* Imprime a mensagem "echo" e o conteúdo do buffer (ou seja, o que foi recebido
-    do servidor) para o STDOUT (fd = 1) */
-    // FIXME remove later, just for debugging
-    write(1, "DEBUG: ", 6);
-    write(1, status, strlen(status));
-    write(1, "\n", 1);
-
-    /* Desaloca a memória da estrutura `res` e fecha o socket */
+    /*Frees memory from the struct `res` and closes the socket */
     freeaddrinfo(res);
     close(fd);
 
@@ -613,6 +633,8 @@ int send_message_tcp(char *ip, char* port, char* cmd) {
     free(cmd_code);
     free(status);
     free(buffer);
+
+    return 0;
 }
 
 
@@ -746,7 +768,7 @@ int readCommand(int *cmdCode, char *cmd){
         strcat(cmd, "\n");
     }
 
-    // FIXME remover mais tarde - comando REV para revelar a palavra
+    // Reveal command to reveal the command in tejo server
     else if (strcmp(buffer, "rev") == 0) {
 
         *cmdCode = REV;
@@ -769,7 +791,7 @@ int main(int argc, char *argv[]) {
     int cmdCode;                                             // The Command that the user passes
     char *cmd = (char*) malloc(sizeof(char)*1024);      // The argument of the command, if it exists
 
-    char* port = (char*) malloc(sizeof(char) * 6);      // porta do tejo. TODO substituir por 58000+GN;
+    char* port = (char*) malloc(sizeof(char) * 6);
     strcpy(port, "58031");
 
     char *ip = malloc(sizeof("___.___.___.___"));
@@ -800,106 +822,98 @@ int main(int argc, char *argv[]) {
             case START:
                 res = send_message_udp(ip, port, cmd, response);
                 if (res == -1) {
-                    return -1;
+                    printf(REPEAT_COMMAND);
+                    break;
                 }
                 process_start(current_game, response);
                 break;
 
             case PLAY:
-                //printf("Play! Arg: %s", cmd);
                 res = send_message_udp(ip, port, cmd, response);
                 if (res == -1){
-                    return -1;
+                    printf(REPEAT_COMMAND);
+                    break;
                 }
                 process_play(current_game, response, cmd);
                 break;
 
             case GUESS:
-                //printf("Guess! Arg: %s", cmd);
                 res = send_message_udp(ip, port, cmd, response);
                 if (res == -1){
-                    return -1;
+                    printf(REPEAT_COMMAND);
+                    break;
                 }
                 process_guess(current_game, response, cmd);
                 break;
 
             case SCOREBOARD:
-                printf("Scoreboard!\n");
-                send_message_tcp(ip, port, cmd);
+                res = send_message_tcp(ip, port, cmd);
+                if (res == -1) {
+                    printf(REPEAT_COMMAND);
+                    break;
+                }
                 break;
 
             case HINT:
-                send_message_tcp(ip, port, cmd);
+                res = send_message_tcp(ip, port, cmd);
+                if (res == -1) {
+                    printf(REPEAT_COMMAND);
+                    break;
+                }
                 break;
 
             case STATE:
-                send_message_tcp(ip, port, cmd);
+                res = send_message_tcp(ip, port, cmd);
+                if (res == -1) {
+                    printf(REPEAT_COMMAND);
+                    break;
+                }
                 break;
 
             case QUIT:
-                send_message_udp(ip, port, cmd, response);
+                res = send_message_udp(ip, port, cmd, response);
+                if (res == -1) {
+                    printf(REPEAT_COMMAND);
+                    break;
+                }
                 process_quit(response);
                 break;
 
             case EXIT:
-                send_message_udp(ip, port, cmd, response);
+                res = send_message_udp(ip, port, cmd, response);
+                if (res == -1) {
+                    printf(REPEAT_COMMAND);
+                    break;
+                }
                 toExit = 1;
                 process_exit(response);
                 break;
 
-            case REV:     // FIXME remover mais tarde - comando REV para revelar a palavra
-                //printf("Rev!\n");
+            case REV:
                 send_message_udp(ip, port, cmd, response);
                 break;
 
             default:
-                printf("ERROR (ISTO É MEU, NÃO DO SERVER)!\n");
+                printf(UNKNOWN_COMMAND);
+                printf(AVAILABLE_COMMANDS);
                 break;
         }
-        //printf("TRIALSSSSSSS_GLOBAL: %d\n", trials);
+
         memset(response, 0, CHUNK_SIZE);
     }
 
     return 0;
 }
 
-
-
-// SERVER (sockets)
-// UDP -> sempre aberto
-// TCP -> sempre aberto
-// para cada cliente -> abre quando é estabelecida uma ligação, fecha terminada a ligação
-
-// CLIENT (sockets)
-// Os sockets abrem e fecham para cada comando (UDP e TCP)
-
 /*
  * TODO:
- * CLIENTE
- * - Funções chamadas dentro de um while, se der -1, podem decidir terminar ou dar uma mensagem de erro e de seguida ler o próximo comando
- * - Por timer em funções que acham que faz sentido
- *
  * SERVIDOR
- * - Por timer em funções que acham que faz sentido
- * - Funções chamadas dentro de um while. ser -1, passam para próximo pedido
- *
+ * - Funções chamadas dentro de um while. se der -1, passam para próximo pedido
+
  * */
-// TODO: guardar os ficheiros todos de TCP
-// TODO: Somoes bué fixes
 // TODO: Ver mallocs e frees todos
-// TODO: primeiro QUIT não envia o PLID para o servidor
-// TODO: No INV colocar os trials do cliente iguais aos do servidor
-// TODO: implementar lógica do play ->
-//      - [ ] Preencher os underscores com as letras nas posições certas;
-//      - [ ] incrementar trials como deve de ser;
-//      - [ ] incrementar número de erros como deve de ser
-//      - [ ] verificar se a palavra já foi descoberta (fazer print de um "parabéns" com stats quando vem o "RLG WIN ?")
-//      - [ ] ver se nos escapou alguma coisa nos outros status do play
-//      - [ ] Fazer print do estado do jogo (palavra, erros, trials, etc) a cada play
-// TODO: implementar lógica do guess ->
-//      - [ ] incrementar trials como deve de ser;
-//      - [ ] incrementar trials como deve de ser;
-//      - [ ] incrementar número de erros como deve de ser
-//      - [ ] verificar se a palavra já foi descoberta (fazer print de um "parabéns" com stats quando vem o "RWG WIN ?")
-//      - [ ] ver se nos escapou alguma coisa nos outros status do guess
-//      - [ ] Fazer print do estado do jogo (palavra, erros, trials, etc) a cada gw
+// TODO: dizer no README que é propositado: "primeiro QUIT não envia o PLID para o servidor"
+
+// TODO:
+    // Perguntar prof:
+    // - Para fazer o TIMEOUT, dizemos aos user "pfv reenvia a mensagem" ou temos nós um timer para o fazer automáticamente?

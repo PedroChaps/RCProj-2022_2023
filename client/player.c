@@ -522,7 +522,7 @@ int send_message_tcp(char *ip, char* port, char* cmd) {
     if (errcode != 0) {
         return -1;
     }
-	
+/* 
 	// create a timeout for the connect
 	struct timeval tv;
 	tv.tv_sec = 5;
@@ -531,7 +531,7 @@ int send_message_tcp(char *ip, char* port, char* cmd) {
 		perror("setsockopt");
 		return -1;
 	}
-
+ */
     do {
         n = connect(fd, res->ai_addr, res->ai_addrlen);
     } while (n == -1 && errno == EINTR);
@@ -581,7 +581,7 @@ int send_message_tcp(char *ip, char* port, char* cmd) {
     // and fwrite to write the file. We should use the function read_word to read the file from the server.
 
     strcat(filepath, filename);
-    int fd_file = open(filepath, O_RDWR | O_CREAT, 0666);
+    int fd_file = open(filepath, O_WRONLY | O_CREAT, 0666);
     if (fd_file == -1) {
         return -1;
     }
@@ -609,41 +609,6 @@ int send_message_tcp(char *ip, char* port, char* cmd) {
             write(STDOUT_FILENO, buffer, nread);
         }
     }
-
-//    // We know that the file has the name filename and the size filesize, so we can create a file with that name and size
-//    // If the cmd_code is RHL, we need to create a file with the name filename and the size filesize. Otherwise, we keep the information in a buffer. We should use fopen to open the file
-//    // and fwrite to write the file. We should use the function read_word to read the file from the server.
-//    if (strcmp(cmd_code, "RHL") == 0) {
-//
-//        strcat(filepath, filename);
-//        int fd_file = open(filepath, O_RDWR | O_CREAT, 0666);
-//        if (fd_file == -1) {
-//            return -1;
-//        }
-//
-//        int toRead = filesize;
-//
-//        // Reads the image from the server and saves it locally
-//        while (toRead > 0) {
-//            nread = read_chunk(buffer, fd, min(CHUNK_SIZE, toRead));
-//            write(fd_file, buffer, nread);
-//            toRead -= (int) nread;
-//        }
-//
-//        printf(SAVED_IMAGE, filepath);
-//    }
-//    // Writes to the STDOUT
-//    else {
-//        int toRead = filesize;
-//
-//        //reads anything big enough from the server
-//        while (toRead > 0) {
-//            nread = read_chunk(buffer, fd, min(CHUNK_SIZE, toRead));
-//            write(1, buffer, nread);
-//            toRead -= (int) nread;
-//        }
-//    }
-
     /*Frees memory from the struct `res` and closes the socket */
     freeaddrinfo(res);
     close(fd);

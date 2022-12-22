@@ -322,7 +322,7 @@ int quit_game(char *command, char *response) {
         move_and_rename(filepath, folderpath, "Q");
         //free(folderpath); TODO: Queixa-se que o free está a ser feito em memória não alocada
 
-        // Removes the `curr_word_PLID.txt` file
+        // Removes the `curr_word_PLID.tfxt` file
         strcpy(filepath, "GAMES/curr_word_");
         strcat(filepath, plid);
         strcat(filepath, ".txt");
@@ -964,10 +964,8 @@ int process_state_quit(char* plid, int fd){
     if (fp_state== NULL) {
         return -1;
     }
+    strcpy(buffer, "\t--- Transactions found:\n");
     fprintf(fp_state, "\tLast finalized game for player %s\n", plid);
-    strcpy(buffer, "\t--- Transactions found: ");
-    sprintf(buffer + strlen(buffer), "%d", nr_lines);
-    strcat(buffer, " ---\n");
     fputs(buffer, fp_state);
 
     // finds the last game of the player and saves the plid gamepath in filepath
@@ -1259,7 +1257,7 @@ int process_hint(char *command, int fd){
 
     // open the file and read the second word from the first line and saves it in hint_name
     FILE *fp = fopen(filepath, "r");
-    if (fp == NULL) { //TODO: N ESQUEÇER MUDAR
+    if (fp == NULL) {
         // writes the error message to the client
         char *response = (char *) malloc(sizeof(char) * (strlen("RHL NOK\n") + 1));
         if (response == NULL) {
@@ -1267,8 +1265,6 @@ int process_hint(char *command, int fd){
         }
         strcpy(response, "RHL NOK\n");
         write(fd, response, strlen(response));
-        // TODO: remover, só para testes
-        //  write(fd, response, strlen(response));
         free(response);
         return -1;
     }
@@ -1326,7 +1322,6 @@ int process_hint(char *command, int fd){
     close(fd_hint);
 
 }
-
 
 
 int process_scoreboard(char *command, int fd){
@@ -1424,18 +1419,12 @@ int process_client_message(char *command, char *response, int fd){
         return process_scoreboard(command, fd);
      }
     else if (strcmp(splitted, "GHL") == 0) {
-        return process_hint(command, fd);     //TODO: criar abstração a enviar ficheiro
+        return process_hint(command, fd);    
     }
     else if (strcmp(splitted, "STA") == 0) {
      return process_state(command, fd);
     }
 
-
-//    else {
-//        TODO: implementar um erro
-//        strcpy(response, "ERR");
-//        return -1;
-//    }
 
     return 0;
 
@@ -1534,7 +1523,17 @@ int process_messages_TCP(char *port){
     hints.ai_family = AF_INET;
     hints.ai_socktype = SOCK_STREAM;
     hints.ai_flags = AI_PASSIVE;
-
+/*
+	//Set timeout to 5 seconds
+	struct timeval tv;
+	tv.tv_sec = 5;
+	tv.tv_usec = 0;
+	if (setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv, sizeof tv) < 0) {
+		printf("%s\n", strerror(errno));
+		exit(1);
+	}
+*/
+	
 	if(setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &(int){ 1 }, sizeof(int)) < 0){
 		printf("%s\n", strerror(errno));
 		exit(1);
@@ -1570,7 +1569,7 @@ int process_messages_TCP(char *port){
             exit(10);
         }
 
-		// create a timeout for the accept
+/* 		// create a timeout for the accept
 		struct timeval tv;
 		tv.tv_sec = 5;
 		tv.tv_usec = 0;
@@ -1578,7 +1577,7 @@ int process_messages_TCP(char *port){
 			perror("setsockopt");
 			return -1;
 		}
-
+ */
         // fork a new process to handle the new connection
         if ((pid = fork()) == -1)
             exit(11);
@@ -1619,7 +1618,11 @@ int process_messages_TCP(char *port){
     return 0;
 }
 
-
+void sigint_handler(int sig) {
+	printf("Received SIGINT\n");
+	kill(0, SIGKILL); // Kill all processes in the current process group
+	exit(0);
+}
 
 int main(int argc, char *argv[]) {
 
@@ -1636,7 +1639,7 @@ int main(int argc, char *argv[]) {
     }
     signal(SIGCHLD, SIG_IGN);
     signal(SIGPIPE, SIG_IGN);
-
+	signal(SIGINT, sigint_handler);
     // Creates the initial directories, if they are not created yet
     struct stat st;
     if (stat("GAMES", &st) == -1) {
@@ -1650,7 +1653,7 @@ int main(int argc, char *argv[]) {
     }
 
     // Child process
-    if (fork() == 0) {
+    if (fork() != 0) {
         process_messages_UDP(port);
     } else {
         if (process_messages_TCP(port) == -1){

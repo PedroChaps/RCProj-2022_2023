@@ -781,6 +781,11 @@ int main(int argc, char *argv[]) {
     char *ip = malloc(sizeof("___.___.___.___"));
     strcpy(ip, "127.0.0.1"); // default ip
 
+    struct stat st;
+    if (stat("files", &st) == -1) {
+        mkdir("files", 0700);
+    }
+    
     /* Initializes the structure Game */
     game *current_game = (game *) malloc(sizeof(game));
 

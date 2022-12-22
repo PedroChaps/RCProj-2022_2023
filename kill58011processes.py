@@ -2,13 +2,13 @@ import os
 import subprocess
 
 
-process = subprocess.Popen(["netstat", "-tulpn"], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+process = subprocess.Popen(["netstat", "-tupn"], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
 
 output = process.communicate()[0].split(b"\n")
 
 inter = []
 for ln in output:
-    if b"58011" in ln:
+    if b"58031" in ln:
         inter.append(ln)
         
 

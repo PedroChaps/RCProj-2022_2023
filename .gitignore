@@ -12,3 +12,6 @@ server/.idea/
 server/cmake-build-debug/
 server/CMakeLists.txt
 server/server
+server/GAMES/*
+server/HINTS/*
+server/SCORES/*

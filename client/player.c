@@ -43,7 +43,7 @@
 #define GUESS_DUP "You have already tried to guess that word. Try another one!\n"
 #define GUESS_WIN "Wow, you guessed the correct word! Congratulations!\n"
 #define START_ANOTHER_GAME "If you want to a start a new game, type `start PLID`, where PLID is your student number, or `exit` the program.\n"
-#define REPEAT_COMMAND "There was ab error sending the message to server! :/\nPlease try again...\n"
+#define REPEAT_COMMAND "There was an error sending the message to server! :/\nPlease try again...\n"
 #define UNKNOWN_COMMAND "That command is not available in your region. Please use the available commands that I showed you! >:( .\n"
 /* --------------------------------------------------------------------------------------------------- */
 
@@ -426,6 +426,15 @@ int send_message_udp(char *ip, char* port, char* cmd, char* buffer) {
         return -1;
     }
 
+	// create a timeout for the recvfrom
+	struct timeval tv;
+	tv.tv_sec = 5;
+	tv.tv_usec = 0;
+	if (setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv, sizeof tv)){
+		perror("setsockopt");
+		return -1;
+	}
+
     addrlen = sizeof(addr);
     n = recvfrom(fd, buffer, CHUNK_SIZE, 0, (struct sockaddr *)&addr, &addrlen);
     if (n == -1) {
@@ -513,6 +522,15 @@ int send_message_tcp(char *ip, char* port, char* cmd) {
     if (errcode != 0) {
         return -1;
     }
+	
+	// create a timeout for the connect
+	struct timeval tv;
+	tv.tv_sec = 5;
+	tv.tv_usec = 0;
+	if (setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv, sizeof tv)){
+		perror("setsockopt");
+		return -1;
+	}
 
     do {
         n = connect(fd, res->ai_addr, res->ai_addrlen);
@@ -544,6 +562,7 @@ int send_message_tcp(char *ip, char* port, char* cmd) {
         return PROCESS_NOK;
     }
 
+ 
     // A file is read from the server, so we need to read the file name and then the file size, using the function read_word
     n = read_word(filename, fd, 24+1);
     if (n == -1) {

@@ -785,7 +785,7 @@ int readCommand(int *cmdCode, char *cmd){
 
 
 int main(int argc, char *argv[]) {
-    
+
     char* response = (char*) malloc(sizeof(char) * CHUNK_SIZE);
     int res, toExit = 0;
     int cmdCode;                                             // The Command that the user passes
@@ -905,15 +905,13 @@ int main(int argc, char *argv[]) {
     return 0;
 }
 
-/*
- * TODO:
- * SERVIDOR
- * - Funções chamadas dentro de um while. se der -1, passam para próximo pedido
 
- * */
 // TODO: Ver mallocs e frees todos
-// TODO: dizer no README que é propositado: "primeiro QUIT não envia o PLID para o servidor"
+/*
+ * free current_game
+ */
+// TODO: Trocar SV para sequencial (vs random)
+// TODO: Correr os scripts 
+// TODO: Fazer Excel
+// TODO: Testar na sala
 
-// TODO:
-    // Perguntar prof:
-    // - Para fazer o TIMEOUT, dizemos aos user "pfv reenvia a mensagem" ou temos nós um timer para o fazer automáticamente?

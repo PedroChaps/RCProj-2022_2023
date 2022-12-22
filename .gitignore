@@ -1,11 +1,14 @@
 .vscode/
 .idea/
+kill58011processes.py
+
 client/.idea/
 client/CMakeLists.txt
 client/cmake-build-debug/
 client/player
-
 client/files/
 
-
+server/.idea/
 server/cmake-build-debug/
+server/CMakeLists.txt
+server/server

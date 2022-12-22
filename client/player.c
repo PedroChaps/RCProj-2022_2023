@@ -903,6 +903,3 @@ int main(int argc, char *argv[]) {
 //      - [ ] verificar se a palavra já foi descoberta (fazer print de um "parabéns" com stats quando vem o "RWG WIN ?")
 //      - [ ] ver se nos escapou alguma coisa nos outros status do guess
 //      - [ ] Fazer print do estado do jogo (palavra, erros, trials, etc) a cada gw
-
-// TODO: GS
-//  - [ ] When the GS responds with DUP, the number of trials in the GS is not increased

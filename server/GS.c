@@ -247,7 +247,7 @@ int get_timestamp(char *buffer){
     time (&rawtime);
     timeinfo = localtime (&rawtime);
 
-    strftime(buffer,80,"%Y%m%d_%H:%M:%S",timeinfo);
+    strftime(buffer,80,"%Y%m%d_%H%M%S",timeinfo);
 
     return 0;
 }
@@ -592,6 +592,70 @@ int play_letter(char *command, char *response) {
     return 0;
 }
 
+/* Finds and writes the top scores to the file path `writepath` */
+int write_top_scores(char *writepath) {
+
+    struct dirent **filelist;
+    int n_entries, i_file;
+    char fname[50];
+    FILE *fp_sb, *fp;
+
+    n_entries = scandir("SCORES/", &filelist, 0, alphasort);
+    // open the file to write the top scores
+    fp_sb = fopen(writepath, "w");
+    if (fp_sb == NULL) {
+        return -1;
+    }
+    fputs("-------------------------------- TOP 10 SCORES --------------------------------\n\n", fp_sb);
+    fputs("    SCORE PLAYER     WORD                             GOOD TRIALS  TOTAL TRIALS\n\n", fp_sb);
+
+    i_file = 0;
+    if (n_entries < 0) {
+        return 0;
+    }
+    else {
+        while (n_entries--) {
+            if (filelist[n_entries]->d_name[0] != '.') {
+                sprintf(fname, "SCORES/%s", filelist[n_entries]->d_name);
+                fp = fopen(fname, "r");
+                if (fp != NULL) {
+
+                    // Reads the only line of the file
+                    char buffer[1024];
+                    fgets(buffer, 1024, fp);
+
+                    fprintf(fp_sb, "%-2d - ", i_file + 1);
+
+                    // Splits the line into tokens
+                    char *token = strtok(buffer, " ");
+                    fprintf(fp_sb, "%s  ", token);
+
+                    token = strtok(NULL, " ");
+                    fprintf(fp_sb, "%s  ", token);
+
+                    token = strtok(NULL, " ");
+                    fprintf(fp_sb, "%-35s ", token);
+
+                    token = strtok(NULL, " ");
+                    fprintf(fp_sb, "     %-10s ", token);
+
+                    token = strtok(NULL, " ");
+                    fprintf(fp_sb, "  %-10s\n", token);
+
+                    ++i_file;
+                    fclose(fp);
+                }
+            }
+            free(filelist[n_entries]);
+            if (i_file == 10)
+                break;
+        }
+        free(filelist);
+    }
+    fclose(fp_sb);
+    return i_file;
+}
+
 
 int guess_word(char *command, char *response) {
     FILE *fp;
@@ -695,7 +759,6 @@ int guess_word(char *command, char *response) {
         strcat(folderpath, plid);
         strcat(folderpath, "/");
 
-
         // Move the file to the `GAMES/PLID` folder
         move_and_rename(filepath, folderpath, "W");
 
@@ -705,26 +768,16 @@ int guess_word(char *command, char *response) {
         strcat(filepath, ".txt");
         remove(filepath);
 
-        // Create a file "SCORES/score_PLID_DDMMYYYY_HHMMSS.txt"
-        char *score_filepath = (char *) malloc(sizeof(char) * (37 + 1));
-        if (score_filepath == NULL) {
-            return -1;
-        }
-        strcpy(score_filepath, "SCORES/score_");
-        strcat(score_filepath, plid);
-        strcat(score_filepath, "_");
-        get_timestamp(score_filepath + strlen(score_filepath));
-        strcat(score_filepath, ".txt");
 
-        // Opens the file to write "score PLID word n_succ n_trials"
-        fp = fopen(score_filepath, "w");
-        if (fp == NULL) {
-            return -1;
-        }
-
+        // Calculates the score
         char score_buffer[3+1];
         int n_succ = trial_server - nr_errors;
-        int score = (n_succ / trial_server) * 100;
+        int score = ((100 * n_succ) / trial_server);
+        if (score > 100 || score < 0){
+            printf("YOU GOT BAD SCORE MAN\n");
+            return -1;
+        }
+
         // convert score to string
         sprintf(score_buffer, "%d", score);
         // prepend 0s to score until it's exacly 3 digits
@@ -736,14 +789,35 @@ int guess_word(char *command, char *response) {
             strcat(score_buffer, aux);
             memset(aux, 0, strlen(aux));
         }
-        // free(aux);
-        fprintf(fp, "%d %s %s %d %d",score, plid, word_read, n_succ, trial_server);
+
+
+        // Create a file "SCORES/SCORE_PLID_DDMMYYYY_HHMMSS.txt"
+        char *score_filepath = (char *) malloc(sizeof(char) * (37 + 1));
+        if (score_filepath == NULL) {
+            return -1;
+        }
+        strcpy(score_filepath, "SCORES/");
+        strcat(score_filepath, score_buffer);
+        strcat(score_filepath, "_");
+        strcat(score_filepath, plid);
+        strcat(score_filepath, "_");
+        get_timestamp(score_filepath + strlen(score_filepath));
+        strcat(score_filepath, ".txt");
+
+        // Opens the file to write "score PLID word n_succ n_trials"
+        fp = fopen(score_filepath, "w+");
+        if (fp == NULL) {
+            return -1;
+        }
+
+
+        //fputs(score_filepath, fp);
+        fprintf(fp, "%s %s %s %d %d",score_buffer, plid, word_read, n_succ, trial_server);
 
         // Closes the file
         if (fclose(fp) != 0) {
             return -1;
         }
-
 
         // Creates the response
         strcpy(response, "RWG WIN ");
@@ -1227,13 +1301,12 @@ int process_hint(char *command, int fd){
     if (response == NULL) {
         return -1;
     }
+
     strcpy(response, "RHL OK ");
     strcat(response, hint_name);
     strcat(response, " ");
-    sprintf(buffer, "%d", hint_size);
-
+    sprintf(buffer, "%d ", hint_size);
     strcat(response, buffer);
-    strcat(response, " ");
 
     // sends the response to the client
     write(fd, response, strlen(response));
@@ -1258,57 +1331,73 @@ int process_hint(char *command, int fd){
 
 }
 
-/* Finds the top scores in the SCORES directory and returns the number of scores found
-int FindTopScores(SCORELIST **list)
-{
-    struct dirent **filelist;
-    int n_entries, i_file;
-    char fname[50];
-    FILE **fp;
-    n_entries = scandir("SCORES/", &filelist, 0, alphasort);
-    i_file = 0;
-    if (n_entries < 0)
-    {
-        return (0);
-    }
-    else
-    {
-        while (n_entries--)
-        {
-            if (filelist[n_entries]->d_name[0] != '.')
-            {
-                sprintf(fname, "SCORES/%s", filelist[n_entries]->d_name);
-                fp = fopen(fname, "r");
-                if (fp != NULL)
-                {
-                    fscanf(fp, "%d%s%s%d%d",
-                        &list->score[i_file], list->PLID[i_file], list->word[i_file], &list->nsucc[i_file],
-                        &list->ntot[i_file]);
-                    fclose(fp);
-                    ++i_file;
-                }
-            }
-            free(filelist[n_entries]);
-            if (i_file == 10)
-                break;
-        }
-        free(filelist);
-    }
-    list->n_scores = i_file;
-    return (i_file);
-}
-*/
 
 
 int process_scoreboard(char *command, int fd){
-  /*criar uma estrutura deste género?
-  typedef struct {
-    char player_id[7];
-    int num_plays;  // number of plays required to win the game
-    char word[MAX_WORD_LEN+1];  // word that was guessed
-} Score;
-*/
 
+    int nread, nr_entries;
+
+    // Gets the filepath to write the scoreboard to
+    char *sb_path = (char *) malloc(sizeof(char) * (14 + 1));
+    if (sb_path == NULL) {
+        return -1;
+    }
+    strcpy(sb_path, "scoreboard.txt");
+
+    // Allocates the memory to the response buffer
+    char *response = (char *) malloc(sizeof(char) * (strlen("RSB OK ") + strlen(sb_path) + 10 + 1));
+    if (response == NULL) {
+        return -1;
+    }
+
+    // Calls the function to compute the new scoreboard. If there are no entries, sends a response with "RSB EMPTY".
+    nr_entries = write_top_scores(sb_path);
+    if (nr_entries == 0) {
+        strcpy(response, "RHL EMPTY\n");
+        // sends the response to the client
+        write(fd, response, strlen(response));
+    }
+
+    // get the size of the file
+    FILE* fp = fopen(sb_path, "r");
+    if (fp == NULL){
+        return -1;
+    }
+    fseek(fp, 0L, SEEK_END);
+    int sb_size = ftell(fp);
+    fclose(fp);
+
+    // appends to the response buffer the contents of the hint file in chuncks of 1024 bytes using write_chunk()
+    int toRead = sb_size;
+
+    //writes the response to the client, containing "RSB OK ",the name of the hint file, the size of the hint file
+    char buffer[1024];
+    strcpy(response, "RSB OK ");
+    strcat(response, sb_path);
+    strcat(response, " ");
+    sprintf(buffer, "%d ", sb_size);
+    strcat(response, buffer);
+
+    // sends the response to the client
+    write(fd, response, strlen(response));
+
+    // opens the scoreboard file and associates it to a File Descriptor
+    int fd_hint = open(sb_path, O_RDONLY);
+    if (fd_hint == -1) {
+        return -1;
+    }
+
+    // Reads the scoreboard and sends it to the client in chunks of 1024 bytes
+    while (toRead > 0) {
+        nread = read_chunk(buffer, fd_hint, min(CHUNK_SIZE, toRead));
+        write(fd, buffer, nread);
+        toRead -= (int) nread;
+    }
+
+    // Removes the file `scoreboard.txt`
+    remove("scoreboard.txt");
+
+    free(sb_path);
 }
 
 
@@ -1338,7 +1427,7 @@ int process_client_message(char *command, char *response, int fd){
     }
 
     // TCP FUNCTIONS
-    else if (strcmp(splitted, "GSB") == 0) {
+    else if (strcmp(splitted, "GSB\n") == 0) {
         return process_scoreboard(command, fd);
      }
     else if (strcmp(splitted, "GHL") == 0) {
@@ -1536,19 +1625,31 @@ int main(int argc, char *argv[]) {
     signal(SIGPIPE, SIG_IGN);
     // signal(SIGINT, SIG_IGN); // TRATAR O SIGINT (nao com ign)
 
+    // Creates the initial directories, if they are not created yet
+    struct stat st;
+    if (stat("GAMES", &st) == -1) {
+        mkdir("GAMES", 0700);
+    }
+    if (stat("SCORES", &st) == -1) {
+        mkdir("SCORES", 0700);
+    }
+    if (stat("HINTS", &st) == -1) {
+        mkdir("HINTS", 0700);
+    }
+
     // Child process
     if (fork() == 0) {
-        process_messages_TCP(port);
-    } else {
         process_messages_UDP(port);
+    } else {
+        process_messages_TCP(port);
     }
-    
 
     return 0;
 }
 
 /* TODO:
  * [ ] - Implementar o -v (verbose)
- * FAZER MAKEFILE
- *
+ * [ ] - FAZER MAKEFILE
+ * [ ] - Relatório maybe?
+ * [ ] - Autoavaliação
  * */

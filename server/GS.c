@@ -464,7 +464,7 @@ int play_letter(char *command, char *response) {
         if (word_read[i] == letter){
             curr_word[i] = letter;
             positions[nr_letters++] = i;
-       }
+        }
     }
 
     // If the letter doesn't exist in the word, then the response is `NOK`
@@ -974,7 +974,7 @@ int process_state_quit(char* plid, int fd){
     }
 
     nr_lines = get_nr_lines(filepath) - 1; // -1 because of the header
-    
+
     // opens the file
     fp_game = fopen(filepath, "r");
     if(fp_game == NULL){
@@ -1023,7 +1023,7 @@ int process_state_quit(char* plid, int fd){
         }
         fputs(buffer, fp_state);
     }
-        fclose(fp_game);
+    fclose(fp_game);
 
     memset(buffer, 0, sizeof(char) * CHUNK_SIZE);
 /* 
@@ -1248,7 +1248,7 @@ int process_hint(char *command, int fd){
 
     // create the filepath GAMES/game_PLID.txt
     char *filepath = (char *) malloc(sizeof(char) * (20+1));
-    if (filepath == NULL) { 
+    if (filepath == NULL) {
         return -1;
     }
     strcpy(filepath, "GAMES/game_");
@@ -1340,7 +1340,7 @@ int process_scoreboard(char *command, int fd){
     if (response == NULL) {
         return -1;
     }
- 
+
     // Calls the function to compute the new scoreboard. If there are no entries, sends a response with "RSB EMPTY".
     nr_entries = write_top_scores(sb_path);
     if (nr_entries == -1) {
@@ -1348,7 +1348,7 @@ int process_scoreboard(char *command, int fd){
         // sends the response to the client
         write(fd, response, strlen(response));
     }
- 
+
     // get the size of the file
     FILE* fp = fopen(sb_path, "r");
     if (fp == NULL){
@@ -1369,7 +1369,7 @@ int process_scoreboard(char *command, int fd){
     sprintf(buffer, "%d ", sb_size);
     strcat(response, buffer);
 
-  // sends the response to the client
+    // sends the response to the client
     write(fd, response, strlen(response));
 
     // opens the scoreboard file and associates it to a File Descriptor
@@ -1414,15 +1414,15 @@ int process_client_message(char *command, char *response, int fd){
         return quit_game(command, response);
     }
 
-    // TCP FUNCTIONS
+        // TCP FUNCTIONS
     else if (strcmp(splitted, "GSB\n") == 0) {
         return process_scoreboard(command, fd);
-     }
+    }
     else if (strcmp(splitted, "GHL") == 0) {
-        return process_hint(command, fd);    
+        return process_hint(command, fd);
     }
     else if (strcmp(splitted, "STA") == 0) {
-     return process_state(command, fd);
+        return process_state(command, fd);
     }
 
 
@@ -1471,10 +1471,10 @@ int process_messages_UDP(char *port){
             exit(4);
         }
 
-		// Verbose mode
-		if (v == 1){
-		printf("VERBOSE_MODE:\n->The player from port %s has requested a: %s\n", port, buffer);
-		}
+        // Verbose mode
+        if (v == 1){
+            printf("VERBOSE_MODE:\n->The player from port %s has requested a: %s\n", port, buffer);
+        }
 
         // Processes the message recieved
         process_client_message(buffer, response, -1);
@@ -1483,7 +1483,7 @@ int process_messages_UDP(char *port){
         // Sends the response to the client. The maximum size is CHUNK_SIZE
         n = sendto(fd, response, strlen(response), 0, (struct sockaddr *)&addr, addrlen);
         if (n == -1) {
-           exit(5);
+            exit(5);
         }
 
         // Resets the memory of `response` and 'command'
@@ -1523,21 +1523,11 @@ int process_messages_TCP(char *port){
     hints.ai_family = AF_INET;
     hints.ai_socktype = SOCK_STREAM;
     hints.ai_flags = AI_PASSIVE;
-/*
-	//Set timeout to 5 seconds
-	struct timeval tv;
-	tv.tv_sec = 5;
-	tv.tv_usec = 0;
-	if (setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv, sizeof tv) < 0) {
-		printf("%s\n", strerror(errno));
-		exit(1);
-	}
-*/
-	
-	if(setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &(int){ 1 }, sizeof(int)) < 0){
-		printf("%s\n", strerror(errno));
-		exit(1);
-	}
+
+    if(setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &(int){ 1 }, sizeof(int)) < 0){
+        printf("%s\n", strerror(errno));
+        exit(1);
+    }
 
     errcode = getaddrinfo(NULL, port, &hints, &res);
     if ((errcode) != 0) {
@@ -1551,7 +1541,7 @@ int process_messages_TCP(char *port){
         exit(8);
     }
 
-    if (listen(fd, 5) == -1) { // TODO perguntar quantas conexões podem estar pendentes
+    if (listen(fd, 5) == -1) {
         exit(9);
     }
 
@@ -1569,28 +1559,19 @@ int process_messages_TCP(char *port){
             exit(10);
         }
 
-/* 		// create a timeout for the accept
-		struct timeval tv;
-		tv.tv_sec = 5;
-		tv.tv_usec = 0;
-		if (setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv, sizeof tv)){
-			perror("setsockopt");
-			return -1;
-		}
- */
         // fork a new process to handle the new connection
         if ((pid = fork()) == -1)
             exit(11);
 
-        // parent process
+            // parent process
         else if (pid > 0) {
             close(fd);
             while ((n = read(newfd, buffer, 128)) != 0) {
 
-				// Verbose mode
-				if (v == 1){
-				printf("VERBOSE_MODE:\n->The player from port %s has requested a: %s\n", port, buffer);
-				}
+                // Verbose mode
+                if (v == 1){
+                    printf("VERBOSE_MODE:\n->The player from port %s has requested a: %s\n", port, buffer);
+                }
 
                 if (n == -1) /*error*/
                     exit(12);
@@ -1602,7 +1583,7 @@ int process_messages_TCP(char *port){
             exit(0);
         }
 
-        // child process
+            // child process
         else if (pid == 0) {
             // closes the new socket and waits for another connection
             do {
@@ -1610,7 +1591,7 @@ int process_messages_TCP(char *port){
             } while (ret == -1 && errno == EINTR);
             if (ret == -1)
                 exit(14);
-            }
+        }
     }
     freeaddrinfo(res);
     close(fd);
@@ -1619,9 +1600,9 @@ int process_messages_TCP(char *port){
 }
 
 void sigint_handler(int sig) {
-	printf("Received SIGINT\n");
-	kill(0, SIGKILL); // Kill all processes in the current process group
-	exit(0);
+    printf("Received SIGINT\n");
+    kill(0, SIGKILL); // Kill all processes in the current process group
+    exit(0);
 }
 
 int main(int argc, char *argv[]) {
@@ -1639,7 +1620,7 @@ int main(int argc, char *argv[]) {
     }
     signal(SIGCHLD, SIG_IGN);
     signal(SIGPIPE, SIG_IGN);
-	signal(SIGINT, sigint_handler);
+    signal(SIGINT, sigint_handler);
     // Creates the initial directories, if they are not created yet
     struct stat st;
     if (stat("GAMES", &st) == -1) {
@@ -1654,17 +1635,32 @@ int main(int argc, char *argv[]) {
 
     // Child process
     if (fork() != 0) {
+        process_messages_TCP(port);
+    } else {
+        if (process_messages_UDP(port) == -1){
+            printf(DELAY_TCP);
+            exit(1);
+        }
+        exit(0);
+    }
+
+    /*
+
+     if (fork() != 0) {
         process_messages_UDP(port);
     } else {
         if (process_messages_TCP(port) == -1){
-			printf(DELAY_TCP);
-			exit(1);
-		}
-		exit(0);
+            printf(DELAY_TCP);
+            exit(1);
+        }
+        exit(0);
     }
+
+     */
+
     return 0;
 }
-						
+
 /* TODO:
  * [ ] - Autoavaliação
  * */

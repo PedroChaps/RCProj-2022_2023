@@ -14,6 +14,8 @@
 #define GN 31
 #define PLID "099298"
 #define MAX_WORD_SIZE
+#define SOCK_TIMEOUT_SEC 5
+#define SOCK_TIMEOUT_USEC 0
 
 /* Printing information to the user ------------------------------------------------------------------ */
 #define GENERIC_ERROR "An error has occurred :(\nPlease try again!\n"
@@ -206,7 +208,7 @@ char read_letter(char *cmd){
 
 
 /* Processes the "play" action made by the user. Checks if the letter selected is in the
-   word to guess. */
+word to guess. */
 int process_play(game* current_game, char* response, char* cmd){
 
     char status[3+1]; //code is at max 3 digits
@@ -273,8 +275,8 @@ int process_play(game* current_game, char* response, char* cmd){
             return 0;
         }
 
-        // If the status is "INV", there was a problem in message - either the client or the server didn't receive the
-        // message. To synchronize them, assumes the server is the source of truth and assumes it's trial number
+            // If the status is "INV", there was a problem in message - either the client or the server didn't receive the
+            // message. To synchronize them, assumes the server is the source of truth and assumes it's trial number
         else if (strcmp(status, "INV") == 0) {
             trials = trial;
             printf(PLAY_INV);
@@ -320,7 +322,7 @@ int process_play(game* current_game, char* response, char* cmd){
 
 
 /* Processes the "guess" action made by the user. Checks if the given word matches the
-   word to guess. */
+word to guess. */
 int process_guess(game* current_game, char* response, char* cmd){
 
     char status[3+1]; //code is always 3 digits
@@ -366,18 +368,18 @@ int process_guess(game* current_game, char* response, char* cmd){
         printf(GUESS_DUP);
 
     else if (strcmp(status, "NOK") == 0) {
-            printf(GUESS_NOK);
-            current_game->curr_errors++; // Increments the current errors
+        printf(GUESS_NOK);
+        current_game->curr_errors++; // Increments the current errors
     }
 
     else if (strcmp(status, "OVR") == 0){
-            printf(PLAY_OVR);
-            printf(START_ANOTHER_GAME);
-            return 0;
+        printf(PLAY_OVR);
+        printf(START_ANOTHER_GAME);
+        return 0;
     }
 
-    // If the status is "INV", there was a problem in message - either the client or the server didn't receive the
-    // message. To synchronize them, assumes the server is the source of truth and assumes it's trial number
+        // If the status is "INV", there was a problem in message - either the client or the server didn't receive the
+        // message. To synchronize them, assumes the server is the source of truth and assumes it's trial number
     else if (strcmp(status, "INV") == 0) {
         trials = trial;
         printf(PLAY_INV);
@@ -426,14 +428,14 @@ int send_message_udp(char *ip, char* port, char* cmd, char* buffer) {
         return -1;
     }
 
-	// create a timeout for the recvfrom
-	struct timeval tv;
-	tv.tv_sec = 5;
-	tv.tv_usec = 0;
-	if (setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv, sizeof tv)){
-		perror("setsockopt");
-		return -1;
-	}
+    // create a timeout for the recvfrom
+    struct timeval tv;
+    tv.tv_sec = SOCK_TIMEOUT_SEC;
+    tv.tv_usec = SOCK_TIMEOUT_USEC;
+    if (setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv, sizeof tv)){
+        perror("setsockopt");
+        return -1;
+    }
 
     addrlen = sizeof(addr);
     n = recvfrom(fd, buffer, CHUNK_SIZE, 0, (struct sockaddr *)&addr, &addrlen);
@@ -457,8 +459,8 @@ int read_word(char *buffer, int fd, int max_word_len){
     ssize_t nleft,nwritten, nread;
     char *ptr;
     int count;
-    
-    nleft=max_word_len; 
+
+    nleft=max_word_len;
     ptr=buffer;
     while(nleft>0){
         nread = read(fd,ptr,1);
@@ -473,7 +475,7 @@ int read_word(char *buffer, int fd, int max_word_len){
         else if (nread == 0)
             break; // closed by peer
         nleft -= nread;
-        ptr += nread; 
+        ptr += nread;
     }
     nread = max_word_len - nleft;
     return nread;
@@ -494,7 +496,7 @@ int send_message_tcp(char *ip, char* port, char* cmd) {
 
     int fd, errcode, filesize;
     ssize_t n;
-    ssize_t nbytes,nleft,nwritten, nread;
+    ssize_t nbytes,nleft,nwritten, nread, total_read;
     char *ptr;
     char *cmd_code = (char *) malloc(sizeof(char) * (3+1));
     char *status = (char *) malloc(sizeof(char) * (5+1));
@@ -522,16 +524,7 @@ int send_message_tcp(char *ip, char* port, char* cmd) {
     if (errcode != 0) {
         return -1;
     }
-/* 
-	// create a timeout for the connect
-	struct timeval tv;
-	tv.tv_sec = 5;
-	tv.tv_usec = 0;
-	if (setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv, sizeof tv)){
-		perror("setsockopt");
-		return -1;
-	}
- */
+
     do {
         n = connect(fd, res->ai_addr, res->ai_addrlen);
     } while (n == -1 && errno == EINTR);
@@ -562,7 +555,7 @@ int send_message_tcp(char *ip, char* port, char* cmd) {
         return PROCESS_NOK;
     }
 
- 
+
     // A file is read from the server, so we need to read the file name and then the file size, using the function read_word
     n = read_word(filename, fd, 24+1);
     if (n == -1) {
@@ -587,27 +580,29 @@ int send_message_tcp(char *ip, char* port, char* cmd) {
     }
 
     int toRead = filesize;
+    total_read = 0;
 
     // Reads the file from the server and saves it locally
     while (toRead > 0) {
         nread = read_chunk(buffer, fd, min(CHUNK_SIZE, toRead));
         write(fd_file, buffer, nread);
         toRead -= (int) nread;
+        total_read += (int) nread;
     }
     close(fd_file);
     // If it's a hint, tells the user that it has been saved.
     if (strcmp(cmd_code, "RHL") == 0) {
         printf(SAVED_IMAGE, filepath);
     }
-    // Otherwise, it's a .txt file, so prints it to the terminal
+        // Otherwise, it's a .txt file, so prints it to the terminal
     else {
         fd_file = open(filepath, O_RDONLY);
         if (fd_file == -1) {
             return -1;
         }
-        while ((nread = read(fd_file, buffer, CHUNK_SIZE)) > 0) {
-            write(STDOUT_FILENO, buffer, nread);
-        }
+        nread = read(fd_file, buffer, total_read);
+        write(STDOUT_FILENO, buffer, nread);
+
     }
     /*Frees memory from the struct `res` and closes the socket */
     freeaddrinfo(res);
@@ -624,10 +619,10 @@ int send_message_tcp(char *ip, char* port, char* cmd) {
 
 /* Processes the input from the command line, attributing a new IP and a new Port if those arguments were passed */
 int processInput(int argc, char *argv[], char *ip, char *port){
-    
-    if (argc > 5) 
+
+    if (argc > 5)
         return -1;
-    
+
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "-n") == 0) {
             strcpy(ip, argv[i+1]);
@@ -752,7 +747,7 @@ int readCommand(int *cmdCode, char *cmd){
         strcat(cmd, "\n");
     }
 
-    // Reveal command to reveal the command in tejo server
+        // Reveal command to reveal the command in tejo server
     else if (strcmp(buffer, "rev") == 0) {
 
         *cmdCode = REV;
@@ -781,11 +776,6 @@ int main(int argc, char *argv[]) {
     char *ip = malloc(sizeof("___.___.___.___"));
     strcpy(ip, "127.0.0.1"); // default ip
 
-    struct stat st;
-    if (stat("files", &st) == -1) {
-        mkdir("files", 0700);
-    }
-    
     /* Initializes the structure Game */
     game *current_game = (game *) malloc(sizeof(game));
 
@@ -893,14 +883,3 @@ int main(int argc, char *argv[]) {
 
     return 0;
 }
-
-
-// TODO: Ver mallocs e frees todos
-/*
- * free current_game
- */
-// TODO: Trocar SV para sequencial (vs random)
-// TODO: Correr os scripts 
-// TODO: Fazer Excel
-// TODO: Testar na sala
-

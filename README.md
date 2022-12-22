@@ -74,4 +74,6 @@ By default,
 
 
 ## Notes
-- After the client process starts (`./client`), commands that use the player ID will fail, because the command `start PLID` needs to be called first to set a player ID.
+- After the client process starts (`./client`), commands that use the player ID will fail, because the command `start PLID` needs to be called first to set a player ID;  
+- To deactivate the timers, comment the lines 430 to 436 of `client/player.c` file and 1527 to 1530 of `server/GS.c`;
+- To change the time of timer, alter the macros `SOCK_TIMEOUT_SEC` and `SOCK_TIMEOUT_USEC` of `client/player.c` file, in lines 17 and 18.  

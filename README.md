@@ -1,6 +1,9 @@
 # RCProj-2022_2023
 
-This is the project submission of the group 31, in the RC class of the academic year 2022-2023.
+This is the project submission of the group 31, in the RC class of the academic year 2022-2023.  
+
+99181 - Tony Afonso
+99298 - Pedro Chaparro
 
 ## Structure
 The file structure is as follows:

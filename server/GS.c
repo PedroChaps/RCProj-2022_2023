@@ -161,7 +161,8 @@ int start_game(char *command, char *response){
         char max_errors_str[3];
         sprintf(max_errors_str, "%d", *max_errors);
         strcat(response, max_errors_str);
-
+		// frees the memory
+		//free(word);
         fclose(fp);
         return 0;
     }
@@ -238,6 +239,12 @@ int start_game(char *command, char *response){
     sprintf(max_errors_str, "%d", *max_errors);
     strcat(response, max_errors_str);
 
+	//frees the memory
+ 
+/* 	free(nr_letters);
+	free(max_errors); 
+	free(hint);
+	free(splitted); */
     return 0;
 }
 
@@ -327,8 +334,8 @@ int quit_game(char *command, char *response) {
         strcat(filepath, plid);
         strcat(filepath, ".txt");
         remove(filepath);
-
         strcpy(response, "RQT OK\n");
+		free(folderpath);
         return 0;
     }
     else if (access(filepath, F_OK) == -1) {
@@ -566,11 +573,68 @@ int play_letter(char *command, char *response) {
         strcat(filepath, ".txt");
         remove(filepath);
 
+
+		// Calculates the score
+        char score_buffer[3+1];
+        int n_succ = trial_server - nr_errors;
+        int score = ((100 * n_succ) / trial_server);
+        if (score > 100 || score < 0){
+            printf("YOU GOT BAD SCORE MAN\n");
+            return -1;
+        }
+
+        // convert score to string
+        sprintf(score_buffer, "%d", score);
+
+        char aux[3+1];
+        while (strlen(score_buffer) < 3){
+            strcpy(aux, score_buffer);
+            strcpy(score_buffer, "0");
+            strcat(score_buffer, aux);
+            memset(aux, 0, strlen(aux));
+        }
+
+
+        // Create a file "SCORES/SCORE_PLID_DDMMYYYY_HHMMSS.txt"
+        char *score_filepath = (char *) malloc(sizeof(char) * (37 + 1));
+        if (score_filepath == NULL) {
+            return -1;
+        }
+        strcpy(score_filepath, "SCORES/");
+        strcat(score_filepath, score_buffer);
+        strcat(score_filepath, "_");
+        strcat(score_filepath, plid);
+        strcat(score_filepath, "_");
+        get_timestamp(score_filepath + strlen(score_filepath));
+        strcat(score_filepath, ".txt");
+
+        // Opens the file to write "score PLID word n_succ n_trials"
+        fp = fopen(score_filepath, "w+");
+        if (fp == NULL) {
+            return -1;
+        }
+
+        //fputs(score_filepath, fp);
+        fprintf(fp, "%s %s %s %d %d",score_buffer, plid, word_read, n_succ, trial_server);
+
+        // Closes the file
+        if (fclose(fp) != 0) {
+            return -1;
+        }
+
         // Creates the response
         strcpy(response, "RLG WIN ");
         sprintf(buffer_aux, "%d", trial_server);
         strcat(response, buffer_aux);
         strcat(response, "\n");
+
+		//frees the memory
+		free(score_filepath);
+		free(folderpath);
+		free(nr_letters_word);
+		free(curr_word);
+		free(max_errors);
+
         return 0;
     }
 
@@ -591,6 +655,12 @@ int play_letter(char *command, char *response) {
     response[strlen(response) - 1] = '\0';
     strcat(response, "\n");
 
+	//frees the memory
+	free(nr_letters_word);
+	free(curr_word);
+	free(max_errors);
+
+
     return 0;
 }
 
@@ -599,7 +669,7 @@ int write_top_scores(char *writepath) {
 
     struct dirent **filelist;
     int n_entries, i_file;
-    char fname[50];
+    char fname[265];
     FILE *fp_sb, *fp;
 
     n_entries = scandir("SCORES/", &filelist, 0, alphasort);
@@ -698,7 +768,7 @@ int guess_word(char *command, char *response) {
     // opens the file. If it fails, it's because the player doesn't have an ongoing game, so returns an error
     fp = fopen(filepath, "r");
     if (fp == NULL) {
-        strcpy(response, "RWG ERR\n");  // TODO check if PLID and PWG syntax are valid
+        strcpy(response, "RWG ERR\n"); 
         return -1;
     }
 
@@ -784,8 +854,7 @@ int guess_word(char *command, char *response) {
 
         // convert score to string
         sprintf(score_buffer, "%d", score);
-        // prepend 0s to score until it's exacly 3 digits
-        //char *aux = (char *) malloc(sizeof(char) * (3 + 1));
+
         char aux[3+1];
         while (strlen(score_buffer) < 3){
             strcpy(aux, score_buffer);
@@ -823,7 +892,12 @@ int guess_word(char *command, char *response) {
             return -1;
         }
 
-        // Creates the response
+		free(score_filepath);
+		free(nr_letters);
+		free(max_errors);
+		free(word_guessed);
+
+		// Creates the response
         strcpy(response, "RWG WIN ");
         sprintf(buffer_aux, "%d", trial_server);
         strcat(response, buffer_aux);
@@ -852,6 +926,11 @@ int guess_word(char *command, char *response) {
         strcat(filepath, plid);
         strcat(filepath, ".txt");
         remove(filepath);
+
+		free(folderpath);
+		free(nr_letters);
+		free(max_errors);
+		free(word_guessed);
 
         // Creates the response
         strcpy(response, "RWG OVR ");
@@ -894,6 +973,11 @@ int guess_word(char *command, char *response) {
     sprintf(buffer_aux, "%d", trial_server);
     strcat(response, buffer_aux);
     strcat(response, "\n");
+
+	// frees the allocated memory
+	free(nr_letters);
+	free(max_errors);
+	free(word_guessed);
     return 1;
 
 }
@@ -964,8 +1048,8 @@ int process_state_quit(char* plid, int fd){
     if (fp_state== NULL) {
         return -1;
     }
-    strcpy(buffer, "\t--- Transactions found:\n");
     fprintf(fp_state, "\tLast finalized game for player %s\n", plid);
+    strcpy(buffer, "\t--- Transactions found:\n");
     fputs(buffer, fp_state);
 
     // finds the last game of the player and saves the plid gamepath in filepath
@@ -1026,14 +1110,6 @@ int process_state_quit(char* plid, int fd){
     fclose(fp_game);
 
     memset(buffer, 0, sizeof(char) * CHUNK_SIZE);
-/* 
-    // Use the stat function to get information about the file
-    struct stat file_stat;
-    if (stat(state_path, &file_stat) != 0) {
-        perror("Error getting file status");
-        return 1;
-    }
-    int state_size = file_stat.st_size; */
 
     // Gets the file size
     fseek(fp_state, 0L, SEEK_END);
@@ -1067,6 +1143,14 @@ int process_state_quit(char* plid, int fd){
     }
     // closes the file descriptor
     close(fd_state);
+
+	// frees the memory
+	free(filepath);
+	free(buffer);
+	free(word);
+	free(hint_name);
+	free(response);
+	free(state_path);
 
     return 0;
 
@@ -1225,8 +1309,17 @@ int process_state(char *command, int fd){
     // closes the file descriptor
     close(fd_state);
 
+	// frees the memory
+	free(line);
+	free(buffer);
+	free(response);
+	free(game_path);
+	free(output_path);
+	free(curr_word_path);
+	free(plid);
+
+
     return 0;
-    // free plid, fp_game
 }
 
 int process_hint(char *command, int fd){
@@ -1321,6 +1414,16 @@ int process_hint(char *command, int fd){
     // closes the file descriptor
     close(fd_hint);
 
+	// frees the memory
+	free(hint_name);
+	free(hint_path);
+	free(splitted);
+	free(plid);
+	free(filepath);
+	free(response);
+	
+	return 0;
+
 }
 
 
@@ -1346,7 +1449,12 @@ int process_scoreboard(char *command, int fd){
     if (nr_entries == -1) {
         strcpy(response, "RHL EMPTY\n");
         // sends the response to the client
-        write(fd, response, strlen(response));
+        if (write(fd, response, strlen(response)) == -1) {
+			return -1;
+		}
+		free(sb_path);
+		free(response);
+		return 0;
     }
 
     // get the size of the file
@@ -1389,6 +1497,8 @@ int process_scoreboard(char *command, int fd){
     remove("scoreboard.txt");
 
     free(sb_path);
+	free(response);
+	return 0;
 }
 
 
@@ -1492,7 +1602,9 @@ int process_messages_UDP(char *port){
     }
 
     freeaddrinfo(res);
+	free(response);
     close(fd);
+	return 0;
 }
 
 
@@ -1580,6 +1692,7 @@ int process_messages_TCP(char *port){
 
             }
             close(newfd);
+			free(chunk);
             exit(0);
         }
 
@@ -1594,6 +1707,7 @@ int process_messages_TCP(char *port){
         }
     }
     freeaddrinfo(res);
+	free(chunk);
     close(fd);
 
     return 0;
@@ -1601,7 +1715,7 @@ int process_messages_TCP(char *port){
 
 void sigint_handler(int sig) {
     printf("Received SIGINT\n");
-    kill(0, SIGKILL); // Kill all processes in the current process group
+    kill(-getpid(), SIGKILL); // Kill all processes in the current process group
     exit(0);
 }
 
@@ -1633,31 +1747,23 @@ int main(int argc, char *argv[]) {
         mkdir("HINTS", 0700);
     }
 
-    // Child process
-    if (fork() != 0) {
+	res = fork();
+    if (res == 0) {
         process_messages_TCP(port);
-    } else {
+    } else if (res > 0) {
+    // Child process
         if (process_messages_UDP(port) == -1){
             printf(DELAY_TCP);
             exit(1);
         }
         exit(0);
     }
+	else if(res == -1){
+		printf("Error creating child process\n");
+		exit(1);
+	}
 
-    /*
-
-     if (fork() != 0) {
-        process_messages_UDP(port);
-    } else {
-        if (process_messages_TCP(port) == -1){
-            printf(DELAY_TCP);
-            exit(1);
-        }
-        exit(0);
-    }
-
-     */
-
+	// free(port);
     return 0;
 }
 

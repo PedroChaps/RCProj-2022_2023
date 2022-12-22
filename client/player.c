@@ -9,6 +9,7 @@
 #include <netdb.h>
 #include <fcntl.h>
 #include <errno.h>
+#include <signal.h>
 
 
 #define GN 31
@@ -547,7 +548,7 @@ int send_message_tcp(char *ip, char* port, char* cmd) {
         return -1;
     }
 
-    if (strcmp(status, "EMPTY") == 0) {
+    if (strcmp(status, "EMPTY\n") == 0) {
         return PROCESS_EMPTY;
     }
 
@@ -762,6 +763,11 @@ int readCommand(int *cmdCode, char *cmd){
     return 1;
 }
 
+void sigint_handler(int sig) {
+    printf("Received SIGINT\n");
+    kill(-getpid(), SIGKILL); // Kill all processes in the current process group
+    exit(0);
+}
 
 int main(int argc, char *argv[]) {
 
@@ -780,6 +786,8 @@ int main(int argc, char *argv[]) {
     game *current_game = (game *) malloc(sizeof(game));
 
     current_game->current_word = malloc(sizeof(char) * MAX_WORD_SIZE + 1);
+
+	signal(SIGINT, sigint_handler);
 
     // reads the input from the command line and defines a new IP and port if they were passed as arguments
     res = processInput(argc, argv, ip, port);
@@ -827,6 +835,9 @@ int main(int argc, char *argv[]) {
 
             case SCOREBOARD:
                 res = send_message_tcp(ip, port, cmd);
+				if (res == PROCESS_EMPTY) {
+					printf("There are no scores yet. Try starting a game!\n");
+				}
                 if (res == -1) {
                     printf(REPEAT_COMMAND);
                     break;
@@ -877,9 +888,13 @@ int main(int argc, char *argv[]) {
                 printf(AVAILABLE_COMMANDS);
                 break;
         }
-
         memset(response, 0, CHUNK_SIZE);
     }
-
+	free(response);
+	free(current_game->current_word);
+	free(current_game);
+	free(cmd);
+	free(port);
+	free(ip);
     return 0;
 }
